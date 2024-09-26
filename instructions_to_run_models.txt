@@ -1,0 +1,46 @@
+# Setup Instructions for Linux/macOS
+
+# Step 1: Set the Base Directory
+base=$(pwd)
+
+# Option 1: Using Python's venv
+
+# Step 2a: Create a New Virtual Environment
+python -m venv $base/ufnet
+
+# Step 3a: Activate the Virtual Environment
+source $base/ufnet/bin/activate
+
+# Step 4a: Install Required Packages
+pip install -r $base/requirements.txt
+
+# Option 2: Using Conda
+
+# Step 2b: Create a New Conda Environment
+conda create --prefix $base/ufnet python=3.11.7
+
+# Step 3b: Activate the Conda Environment
+conda activate $base/ufnet
+
+# Step 4b: Install Required Packages
+pip install -r $base/requirements.txt
+
+# Step 5: Run the Unimodal Models
+
+# a) Smile Model
+cd $base/code/unimodal_models/facial_expression_smile
+python unimodal_smile_baal.py
+
+# b) Finger Tapping Model
+cd $base/code/unimodal_models/finger_tapping
+python unimodal_finger_baal.py
+
+# c) Speech Model
+cd $base/code/unimodal_models/quick_brown_fox
+python unimodal_fox_baal.py
+
+# Step 6: Run the UFNet Model
+cd $base/code/fusion_models/uncertainty_aware_fusion
+python uncertainty_aware_fusion.py
+
+# Note: You can run other fusion models similarly by navigating to their respective directories.

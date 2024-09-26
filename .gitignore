@@ -1,0 +1,67 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*nohup.out
+*processes.txt
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+*.pyc
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# Raw videos #
+##############
+*.mp4
+
+# Directories #
+###############
+corpus/
+metadata/
+validation/
+data/medqa_five_options/
+data/medqa_four_options/
+data/temp/
+data/finger_tapping/videos/
+*/videos/
+*/wandb/
+wandb/
+code/wandb/
+code/residual_models/finger_tapping/wandb/
+code/residual_models/quick_brown_fox/wandb/
+code/residual_models/facial_expression_smile/wandb/
+code/fusion_models/wandb/
+code/fusion_models/policy_gradient_finger/wandb
+code/fusion_models/policy_gradient_all_tasks/wandb
+code/unimodal_models/finger_tapping/wandb/
+code/unimodal_models/quick_brown_fox/wandb/
+code/unimodal_models/facial_expression_smile/wandb
+code/others/
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
