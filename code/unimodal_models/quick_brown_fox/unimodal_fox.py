@@ -24,6 +24,8 @@ import json
 import imblearn
 import re
 from imblearn.over_sampling import SMOTE
+import torch_uncertainty.layers.bayesian as bayesian
+
  
 import torch
 from torch import nn
@@ -250,6 +252,28 @@ class ANN(nn.Module):
         y = self.fc2(x1)
         y = self.sig(y)
         return y
+
+class BNN(nn.Module):
+    def __init__(self, n_features):
+        super(BNN, self).__init__()
+        self.fc1 = bayesian.BayesLinear(
+            in_features=n_features, 
+            out_features=int(n_features / 2), 
+            bias=True
+        )
+        self.fc2 = bayesian.BayesLinear(
+            in_features=self.fc1.out_features, 
+            out_features=1, 
+            bias=True
+        )
+        self.hidden_activation = nn.ReLU()
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
+        x1 = self.hidden_activation(self.fc1(x))
+        y = self.fc2(x1)
+        y = self.sig(y)
+        return y
  
 '''
 ML baselines using pytorch
@@ -261,6 +285,21 @@ class ShallowANN(nn.Module):
         self.activation = nn.ReLU()
         self.sig = nn.Sigmoid()
     def forward(self,x):
+        y = self.fc(x)
+        y = self.sig(y)
+        return y
+
+class ShallowBNN(nn.Module):
+    def __init__(self, n_features):
+        super(ShallowBNN, self).__init__()
+        self.fc = bayesian.BayesLinear(
+            in_features=n_features, 
+            out_features=1, 
+            bias=True
+        )
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
         y = self.fc(x)
         y = self.sig(y)
         return y
@@ -373,7 +412,7 @@ def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
 Evaluate performance on validation/test set.
 Returns all the metrics defined above and the loss.
 '''
-def evaluate(model, dataloader):
+def evaluate(model, dataloader, is_bnn=False, n_mc_samples=10):
     all_preds = []
     all_labels = []
     results = {}
@@ -387,17 +426,32 @@ def evaluate(model, dataloader):
         for i, (x, y) in enumerate(dataloader):
             x = x.to(device)
             y = y.to(device)
-            y_preds = model(x)
             n = y.shape[0]
-            loss += criterion(y_preds.reshape(-1), y)*n
-            n_samples+=n
-            all_preds.extend(y_preds.to('cpu').numpy())
+            
+            if is_bnn:
+                # Monte Carlo Sampling
+                mc_preds = torch.zeros(n_mc_samples, n, device=device)
+                for mc in range(n_mc_samples):
+                    y_preds = model(x)
+                    mc_preds[mc] = y_preds.reshape(-1)
+                y_preds_mean = mc_preds.mean(dim=0)
+            else:
+                # Standard prediction
+                y_preds = model(x)
+                y_preds_mean = y_preds.reshape(-1)
+
+            loss += criterion(y_preds_mean, y) * n
+            n_samples += n
+
+            all_preds.extend(y_preds_mean.to('cpu').numpy())
             all_labels.extend(y.to('cpu').numpy())
 
     results = compute_metrics(all_labels, all_preds)
     results["loss"] = loss.to('cpu').item() / n_samples
+
     return results
- 
+
+
 '''
 python unimodal_fox.py --batch_size=256 --corr_thr=0.9 --drop_correlated=no --gamma=0.7478893868526992 
 --learning_rate=0.06573643554880117 --minority_oversample=no --model=ANN --momentum=0.5231696483982686 
@@ -405,7 +459,7 @@ python unimodal_fox.py --batch_size=256 --corr_thr=0.9 --drop_correlated=no --ga
 --scheduler=step --seed=287 --step_size=28 --use_feature_scaling=yes --use_scheduler=no
 '''
 @click.command()
-@click.option("--model", default="ANN", help="Options: ANN, ShallowANN")
+@click.option("--model", default="ANN", help="Options: ANN, BNN, ShallowANN, ShallowBNN")
 @click.option("--learning_rate", default=0.06573643554880117, help="Learning rate for classifier")
 @click.option("--random_state", default=349, help="Random state for classifier")
 @click.option("--seed", default=287, help="Seed for random")
@@ -522,8 +576,12 @@ def main(**cfg):
     model = None
     if cfg['model']=="ANN":
         model = ANN(features.shape[1])
+    elif cfg['model']=="BNN":
+        model = BNN(features.shape[1])
     elif cfg['model']=="ShallowANN":
         model = ShallowANN(features.shape[1])
+    elif cfg['model']=="ShallowBNN":
+        model = ShallowBNN(features.shape[1])
     else:
         raise ValueError("Invalid model")
  
@@ -585,6 +643,9 @@ def main(**cfg):
              best_dev_f1 = dev_f1
  
     results = evaluate(best_model, test_loader)
+    if cfg['model'] == "BNN" or cfg['model'] == "ShallowBNN":
+        results = evaluate(best_model, test_loader, True)
+
     print(results)
  
     '''
@@ -597,8 +658,13 @@ def main(**cfg):
     '''
     if cfg['model']=="ShallowANN":
         loaded_model = ShallowANN(features.shape[1])
+    elif cfg['model']=="ShallowBNN":
+        loaded_model = ShallowBNN(features.shape[1])
     elif cfg['model']=="ANN":
         loaded_model = ANN(features.shape[1])
+    elif cfg['model']=="BNN":
+        loaded_model = BNN(features.shape[1])
+
     loaded_model.load_state_dict(torch.load(MODEL_PATH))
     loaded_model = loaded_model.to(device)
     print(evaluate(loaded_model,test_loader))

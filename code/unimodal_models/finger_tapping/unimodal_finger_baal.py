@@ -30,6 +30,7 @@ from imblearn.over_sampling import SMOTE
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
+import torch_uncertainty.layers.bayesian as bayesian
 
 from constants_baal import *
 
@@ -264,6 +265,33 @@ class ANN(nn.Module):
         y = self.sig(y)
         return y
 
+class BNN(nn.Module):
+    def __init__(self, n_features, drop_prob):
+        super(BNN, self).__init__()
+        self.fc1 = bayesian.BayesLinear(
+            in_features=n_features, 
+            out_features=int(n_features / 2), 
+            bias=True
+        )
+        self.drop1 = mcdropout.Dropout(p=drop_prob)
+        self.fc2 = bayesian.BayesLinear(
+            in_features=self.fc1.out_features, 
+            out_features=1, 
+            bias=True
+        )
+        self.drop2 = mcdropout.Dropout(p=drop_prob)
+        self.hidden_activation = nn.ReLU()
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
+        x1 = self.hidden_activation(self.fc1(x))
+        x1 = self.drop1(x1)
+        y = self.fc2(x1)
+        y = self.drop2(y)
+        y = self.sig(y)
+        return y
+
+
 '''
 ML baselines using pytorch + BAAL
 '''
@@ -275,6 +303,24 @@ class ShallowANN(nn.Module):
         self.activation = nn.ReLU()
         self.sig = nn.Sigmoid()
     def forward(self,x):
+        y = self.fc(x)
+        y = self.drop(y)
+        y = self.sig(y)
+        return y
+
+class ShallowBNN(nn.Module):
+    def __init__(self, n_features, drop_prob):
+        super(ShallowBNN, self).__init__()
+        self.fc = bayesian.BayesLinear(
+            in_features=n_features, 
+            out_features=1, 
+            bias=True
+        )
+        self.drop = mcdropout.Dropout(p=drop_prob)
+        self.activation = nn.ReLU()
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
         y = self.fc(x)
         y = self.drop(y)
         y = self.sig(y)
@@ -384,7 +430,7 @@ def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
     
     return metrics
 
-def evaluate(model, dataloader, num_trials, num_buckets):
+def evaluate(model, dataloader, num_trials, num_buckets, is_bnn=False):
     model.eval()
 
     all_preds = []
@@ -392,7 +438,6 @@ def evaluate(model, dataloader, num_trials, num_buckets):
     results = {}
     loss = 0
     criterion = torch.nn.BCELoss()
-    wrapped_model = ModelWrapper(model,criterion)
 
     n_samples = 0
 
@@ -400,13 +445,27 @@ def evaluate(model, dataloader, num_trials, num_buckets):
         for i, (x, y) in enumerate(dataloader):
             x = x.to(device)
             y = y.to(device)
-            y_multi_preds = wrapped_model.predict_on_batch(x, iterations=num_trials)
-            y_preds = y_multi_preds.mean(dim=-1)
-            y_errors = y_multi_preds.std(dim=-1)
+
+            if is_bnn:
+                # Monte Carlo Sampling for BNN
+                mc_preds = torch.zeros(num_trials, x.size(0), device=device)
+                for mc in range(num_trials):
+                    y_preds = model(x)
+                    mc_preds[mc] = y_preds.reshape(-1)
+                y_preds_mean = mc_preds.mean(dim=0)  # Mean over num_trials
+            else:
+                # Use the existing wrapped_model for standard model
+                wrapped_model = ModelWrapper(model, criterion)
+                y_multi_preds = wrapped_model.predict_on_batch(x, iterations=num_trials)
+                y_preds_mean = y_multi_preds.mean(dim=-1)  # As before, mean over trials
+
+            y_preds_mean = y_preds_mean.reshape(-1)  # Ensure it's a 1D vector of size [batch_size]
+            y = y.reshape(-1)  # Ensure target is also 1D vector of size [batch_size]
+            
             n = y.shape[0]
-            loss += criterion(y_preds.reshape(-1), y)*n
-            n_samples+=n
-            all_preds.extend(y_preds.to('cpu').numpy())
+            loss += criterion(y_preds_mean, y) * n
+            n_samples += n
+            all_preds.extend(y_preds_mean.to('cpu').numpy())
             all_labels.extend(y.to('cpu').numpy())
 
     results = compute_metrics(all_labels, all_preds)
@@ -425,7 +484,7 @@ def concat_features(row):
 --seed=790 --step_size=18 --use_feature_scaling=yes --use_scheduler=yes
 '''
 @click.command()
-@click.option("--model", default="ShallowANN", help="Options: ANN, ShallowANN")
+@click.option("--model", default="ShallowANN", help="Options: ANN, BNN, ShallowANN, ShallowBNN ")
 @click.option("--dropout_prob", default=0.24180259124462203)
 @click.option("--num_trials", default=1000, help="Options: 100, 500, 1000, 5000, 10000, 50000")
 @click.option("--num_buckets", default=20, help="Options: 5, 10, 20, 50, 100")
@@ -543,8 +602,12 @@ def main(**cfg):
     model = None
     if cfg['model']=="ANN":
         model = ANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
+    elif cfg['model']=="BNN":
+        model = BNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ShallowANN":
         model = ShallowANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
+    elif cfg['model']=="ShallowBNN":
+        model = ShallowBNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     else:
         raise ValueError("Invalid model")
 
@@ -610,6 +673,8 @@ def main(**cfg):
              best_dev_ece = dev_ece
    
     results = evaluate(best_model, test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
+    if cfg["model"] == "BNN" or cfg["model"] == "ShallowBNN":
+        results = evaluate(best_model, test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"], is_bnn = True)
     print(results)
 
     '''
@@ -622,8 +687,12 @@ def main(**cfg):
     '''
     if cfg['model']=="ShallowANN":
         loaded_model = ShallowANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
+    elif cfg['model']=="ShallowBNN":
+        loaded_model = ShallowBNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ANN":
         loaded_model = ANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
+    elif cfg['model']=="BNN":
+        loaded_model = BNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     loaded_model.load_state_dict(torch.load(MODEL_PATH))
     loaded_model = loaded_model.to(device)
     print("="*20)
