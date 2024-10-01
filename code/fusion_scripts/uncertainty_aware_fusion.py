@@ -7,6 +7,7 @@ import json
 import random
 import click
 import scipy
+import wandb
 
 import pandas as pd
 import numpy as np
@@ -550,6 +551,7 @@ def evaluate_fusion_model(fusion_model, dataloader, prediction_models, config, s
 
 @click.command()
 @click.option("--fusion_model", default="bayesian", help="Options: 'base', 'bayesian'")
+@click.option("--wandb", default="False", help="Options: 'True', 'False'")
 @click.option("--learning_rate", default=0.020724443604128343, help="Learning rate for classifier")
 @click.option("--dropout_prob", default=0.495989214406461)
 @click.option("--num_buckets", default=20, help="Options: 5, 10, 20, 50, 100")
@@ -588,6 +590,9 @@ def main(**cfg):
     '''
     with open(MODEL_CONFIG_PATH,"w") as f:
         f.write(json.dumps(cfg))
+
+    if cfg["wandb"]=="True":
+        wandb.init(project="uqparknet", entity="asifazad0178", config=cfg, tags=["fusion-model"])
 
     #reproducibility control
     torch.manual_seed(cfg["seed"])
@@ -868,6 +873,9 @@ def main(**cfg):
 
     # Save best model
     torch.save(best_model.to('cpu').state_dict(),MODEL_PATH)
+    if cfg["wandb"]=="True":
+        wandb.save(MODEL_PATH)
+        wandb.log(test_metrics)
 
     if cfg["fusion_model"] == "base":
         loaded_model = HybridFusionNetworkWithUncertainty(feature_shapes, cfg)

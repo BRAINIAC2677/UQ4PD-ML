@@ -1,5 +1,10 @@
 # UQParkNet | `U`ncertainty `Q`uantified `Park`inson `Net`work
 
+## Insights
+- In all three unimodal models, the BNN variants have more or less same accuracy as their inference time mc-dropout counterpart.
+- However, the BNN variant of fusion network drops accuracy by almost 0.08 both on BNN, inference time mc-dropout unimodal models.
+- My hypothesis is that it will catch up after hyper-parameter tuning of the BNN variant of the fusion network because the dev accuracy also dropped drastically in BNN variant of fusion network.
+
 ## File Descriptions
 
 ### Data
@@ -80,25 +85,29 @@
 - #### Smile Model
     ```
     cd $base/code/unimodal_scripts/facial_expression_smile
-    python unimodal_smile.py
+    python unimodal_smile.py --model ShallowBNN
     ```
 
 - #### Finger Tapping Model
     ```
     cd $base/code/unimodal_scripts/finger_tapping
-    python unimodal_finger.py
+    python unimodal_finger.py --model ShallowANN
     ```
 
 - #### Speech Model
     ```
     cd $base/code/unimodal_scripts/quick_brown_fox
-    python unimodal_fox.py
+    python unimodal_fox.py --model BNN
     ```
 
 ### Fusion Model
 
 ```
 cd $base/code/fusion_scripts
-python uncertainty_aware_fusion.py
+python uncertainty_aware_fusion.py --fusion_model bayesian
 ```
+
+## Contact
+For any queries contact,
+- Asif Azad - asifazad0178@gmail.com
 

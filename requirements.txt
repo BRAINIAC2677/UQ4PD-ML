@@ -13,4 +13,5 @@ seaborn==0.13.2
 torch==2.4.1
 tqdm==4.66.1
 torch-uncertainty==0.2.2.post0 
+wandb==0.18.2 
 

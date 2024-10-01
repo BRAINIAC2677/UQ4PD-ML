@@ -4,6 +4,7 @@ import random
 import torch
 import pickle
 import copy
+import wandb
 
 from baal.modelwrapper import ModelWrapper
 
@@ -357,6 +358,7 @@ def evaluate(model, dataloader, num_trials, num_buckets):
 
 @click.command()
 @click.option("--model", default="ShallowANN", help="Options: ANN, BNN, ShallowANN, ShallowBNN")
+@click.option("--wandb", default="False", help="Options: True, False")
 @click.option("--dropout_prob", default=0.10661756438565197)
 @click.option("--num_trials", default=1000, help="Options: 100, 500, 1000, 5000, 10000, 50000")
 @click.option("--num_buckets", default=20, help="Options: 5, 10, 20, 50, 100")
@@ -383,6 +385,9 @@ def evaluate(model, dataloader, num_trials, num_buckets):
 def main(**cfg):
     with open(MODEL_CONFIG_PATH,"w") as f:
         f.write(json.dumps(cfg))
+    
+    if cfg["wandb"]=="True":
+        wandb.init(project="uqparknet", entity="asifazad0178", config=cfg, tags=["unimodal_smile"])
         
         '''
     Ensure reproducibility of randomness
@@ -527,12 +532,15 @@ def main(**cfg):
              best_dev_f1 = dev_f1
              best_dev_ece = dev_ece
 
-    results = evaluate(best_model, test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
+    test_metrics = evaluate(best_model, test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
     print("\nDev Results\n" + "="*20)
     print({"dev_accuracy":best_dev_accuracy, "dev_balanced_accuracy":best_dev_balanced_accuracy, "dev_loss":best_dev_loss, "dev_auroc":best_dev_auroc, "dev_f1":best_dev_f1, "dev_ece":best_dev_ece})
 
     # Save best model
     torch.save(best_model.to('cpu').state_dict(),MODEL_PATH)
+    if cfg["wandb"]=="True":
+        wandb.save(MODEL_PATH)
+        wandb.log(test_metrics)
 
     # Test whether the model can be loaded successfully
     if cfg['model']=="ShallowANN":
@@ -548,7 +556,8 @@ def main(**cfg):
     loaded_model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
     loaded_model = loaded_model.to(device)
     print("\nTest Results\n" + "="*20)
-    print(evaluate(loaded_model,test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"]))
+    test_metrics = evaluate(loaded_model,test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
+    print(test_metrics)
         
 if __name__ == "__main__":
     main()
