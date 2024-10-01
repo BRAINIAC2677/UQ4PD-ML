@@ -265,7 +265,7 @@ def safe_divide(numerator, denominator):
 Given labels and prediction scores, make a comprehensive evaluation. 
 i.e., threshold = 0.5 means prediction>0.5 will be considered as positive
 '''
-def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
+def compute_metrics(y_true, y_pred_scores, threshold = 0.5, num_buckets = 20):
     labels = np.asarray(y_true).reshape(-1)
     pred_scores = np.asarray(y_pred_scores).reshape(-1)
     preds = (pred_scores >= threshold)
@@ -317,7 +317,7 @@ def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
     '''
     Expected Calibration Error
     '''
-    metrics['ECE'] = expected_calibration_error(labels, pred_scores)
+    metrics['ECE'] = expected_calibration_error(labels, pred_scores, num_buckets = num_buckets)
     
     return metrics
 
@@ -337,10 +337,9 @@ def evaluate(model, dataloader, num_trials, num_buckets):
             x = x.to(device)
             y = y.to(device)
 
-            # Use the existing wrapped_model for standard model
             wrapped_model = ModelWrapper(model, criterion)
             y_multi_preds = wrapped_model.predict_on_batch(x, iterations=num_trials)
-            y_preds_mean = y_multi_preds.mean(dim=-1)  # As before, mean over trials
+            y_preds_mean = y_multi_preds.mean(dim=-1)  
 
             y_preds_mean = y_preds_mean.reshape(-1)  # Ensure it's a 1D vector of size [batch_size]
             y = y.reshape(-1)  # Ensure target is also 1D vector of size [batch_size]
@@ -351,7 +350,7 @@ def evaluate(model, dataloader, num_trials, num_buckets):
             all_preds.extend(y_preds_mean.to('cpu').numpy())
             all_labels.extend(y.to('cpu').numpy())
 
-    results = compute_metrics(all_labels, all_preds)
+    results = compute_metrics(all_labels, all_preds, num_buckets = num_buckets)
     results["loss"] = loss.to('cpu').item() / n_samples
     return results
 
