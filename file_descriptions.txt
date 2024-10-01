@@ -9,9 +9,9 @@ Data:
 8. quick_brown_fox/wavlam_fox_features.csv -- extracted features for the speech task
 
 Code:
-1. unimodal_models/{task_name}/constants.py -- paths set up to run task-specific model without MC-dropout
-2. unimodal_models/{task_name}/constants_baal.py -- paths set up to run task-specific model *with* MC-dropout
-3. unimodal_models/{task_name}/unimodal_{task_tag}.py -- code for the tasks-specific model without MC-dropout
-4. unimodal_models/{task_name}/unimodal_{task_tag}_baal.py -- code for the tasks-specific model *with* MC-dropout
-5. fusion_models/{module_name}/constants.py -- paths set up to run the experiment
-6. fusion_models/{module_name}/{experiment_name}.py -- code for the experiment. For example, fusion_models/uncertainty_aware_fusion.py contains the code for the UFNet used in this study.
+1. unimodal_scripts/{task_name}/constants.py -- paths set up to run task-specific model without MC-dropout
+2. unimodal_scripts/{task_name}/constants_baal.py -- paths set up to run task-specific model *with* MC-dropout
+3. unimodal_scripts/{task_name}/unimodal_{task_tag}.py -- code for the tasks-specific model without MC-dropout
+4. unimodal_scripts/{task_name}/unimodal_{task_tag}_baal.py -- code for the tasks-specific model *with* MC-dropout
+5. fusion_scripts/{module_name}/constants.py -- paths set up to run the experiment
+6. fusion_scripts/{module_name}/{experiment_name}.py -- code for the experiment. For example, fusion_scripts/uncertainty_aware_fusion.py contains the code for the UFNet used in this study.

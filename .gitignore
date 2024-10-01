@@ -49,12 +49,12 @@ code/wandb/
 code/residual_models/finger_tapping/wandb/
 code/residual_models/quick_brown_fox/wandb/
 code/residual_models/facial_expression_smile/wandb/
-code/fusion_models/wandb/
-code/fusion_models/policy_gradient_finger/wandb
-code/fusion_models/policy_gradient_all_tasks/wandb
-code/unimodal_models/finger_tapping/wandb/
-code/unimodal_models/quick_brown_fox/wandb/
-code/unimodal_models/facial_expression_smile/wandb
+code/fusion_scripts/wandb/
+code/fusion_scripts/policy_gradient_finger/wandb
+code/fusion_scripts/policy_gradient_all_tasks/wandb
+code/unimodal_scripts/finger_tapping/wandb/
+code/unimodal_scripts/quick_brown_fox/wandb/
+code/unimodal_scripts/facial_expression_smile/wandb
 code/others/
 # OS generated files #
 ######################
