@@ -2,35 +2,29 @@ import os
 import copy
 import pickle
 import pandas as pd
-from pandas import DataFrame
 
 from tqdm import tqdm
+from baal.modelwrapper import ModelWrapper
 
 from sklearn.metrics import confusion_matrix, precision_recall_curve, average_precision_score
 from sklearn.metrics import auc, roc_auc_score, roc_curve, f1_score, accuracy_score, recall_score, precision_score, brier_score_loss
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from mlxtend.plotting import plot_confusion_matrix
-
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import scipy.stats as stats
 import subprocess as sp
+import matplotlib.pyplot as plt
 
 import random
 import click
 import json
-import imblearn
 import re
 from imblearn.over_sampling import SMOTE
-import torch_uncertainty.layers.bayesian as bayesian
 
 import torch
-from torch import nn
 from torch.utils.data import Dataset, DataLoader
 
 from constants import *
+from models import *
 
 '''
 Find the GPU that has max free space
@@ -40,6 +34,7 @@ def get_gpu_memory():
     memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
     memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
     return memory_free_values
+
 
 '''
 set-up device (for gpu support)
@@ -72,11 +67,11 @@ if not os.path.exists(os.path.join(MODEL_BASE_PATH,"scaler")):
 '''
 Load dev and test sets for this task
 '''
-with open(os.path.join(BASE_DIR,"data/dev_set_participants.txt")) as f:
+with open(os.path.join(DATA_BASE_DIR,"dev_set_participants.txt")) as f:
     ids = f.readlines()
     dev_ids = set([x.strip() for x in ids])
 
-with open(os.path.join(BASE_DIR,"data/test_set_participants.txt")) as f:
+with open(os.path.join(DATA_BASE_DIR,"test_set_participants.txt")) as f:
     ids = f.readlines()
     test_ids = set([x.strip() for x in ids])
 
@@ -97,7 +92,7 @@ def parse_patient_id(name:str):
     return ID
 
 '''
-Parse date from filenames. 
+Parse date from filenames.
 Some examples:
     2022-03-24T13%3A32%3A36.977Z_NIHNT179KNNF4_finger_tapping_left.mp4 -- 2022-03-24
     2021-08-30T20%3A00%3A03.162Z_ZTi20lXEMSdqXLxtnTotwoyADq03_finger_tapping_left.mp4 -- 2021-08-30
@@ -169,15 +164,9 @@ def load(drop_correlated = True, corr_thr = 0.85, hand="both"):
     #print(df["pd"].unique()) #['no' 'yes' 'maybe']: 'no' -> negative; 'yes', 'maybe' -> positive
     labels = 1.0*(df["pd"]!="no")
     df["id"] = df.filename.apply(parse_patient_id)
-
-    # print(len(set(df["id"])), len(set(df["Participant_ID"])))
-    # print(df[df["id"]!=df["Participant_ID"]][["id", "Participant_ID", "filename"]])
-
     df["date"] = df.filename.apply(parse_date)
     df["id_date"] = df["id"]+"#"+df["date"]
-
     return features, labels, df["id"], df["id_date"], columns
-
 '''
 Based on the predefined test split, split the dataframe into train+dev and test sets
 '''
@@ -230,6 +219,8 @@ def train_dev_split(features, labels, ids):
             features_dev.append(x)
             labels_dev.append(l)
 
+    print(f"Size of the train set: {len(labels_train)}, dev set: {len(labels_dev)}")
+
     return features_train, labels_train, ids_train, features_dev, labels_dev, ids_dev
 
 '''
@@ -246,75 +237,7 @@ class TensorDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-'''
-ML baselines using pytorch
-'''
-class ANN(nn.Module):
-    def __init__(self, n_features):
-        super(ANN,self).__init__()
-        self.fc1 = nn.Linear(in_features=n_features, out_features=(int)(n_features/2), bias=True)
-        self.fc2 = nn.Linear(in_features=self.fc1.out_features, out_features=1,bias=True)
-        self.hidden_activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
 
-    def forward(self,x):
-        x1 = self.hidden_activation(self.fc1(x))
-        y = self.fc2(x1)
-        y = self.sig(y)
-        return y
-
-class BNN(nn.Module):
-    def __init__(self, n_features):
-        super(BNN, self).__init__()
-        self.fc1 = bayesian.BayesLinear(
-            in_features=n_features, 
-            out_features=int(n_features / 2), 
-            bias=True
-        )
-        self.fc2 = bayesian.BayesLinear(
-            in_features=self.fc1.out_features, 
-            out_features=1, 
-            bias=True
-        )
-        self.hidden_activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x):
-        x1 = self.hidden_activation(self.fc1(x))
-        y = self.fc2(x1)
-        y = self.sig(y)
-        return y
-
-'''
-ML baselines using pytorch
-'''
-class ShallowANN(nn.Module):
-    def __init__(self, n_features):
-        super(ShallowANN, self).__init__()
-        self.fc = nn.Linear(in_features=n_features, out_features=1,bias=True)
-        self.activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
-    def forward(self,x):
-        y = self.fc(x)
-        y = self.sig(y)
-        return y
-
-class ShallowBNN(nn.Module):
-    def __init__(self, n_features):
-        super(ShallowBNN, self).__init__()
-        self.fc = bayesian.BayesLinear(
-            in_features=n_features, 
-            out_features=1, 
-            bias=True
-        )
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x):
-        y = self.fc(x)
-        y = self.sig(y)
-        return y
-
-    
 '''
 Evaluate performance on validation/test set.
 Returns all the metrics defined above and the loss.
@@ -363,7 +286,7 @@ def safe_divide(numerator, denominator):
 Given labels and prediction scores, make a comprehensive evaluation. 
 i.e., threshold = 0.5 means prediction>0.5 will be considered as positive
 '''
-def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
+def compute_metrics(y_true, y_pred_scores, threshold = 0.5, num_buckets = 20):
     labels = np.asarray(y_true).reshape(-1)
     pred_scores = np.asarray(y_pred_scores).reshape(-1)
     preds = (pred_scores >= threshold)
@@ -415,19 +338,16 @@ def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
     '''
     Expected Calibration Error
     '''
-    metrics['ECE'] = expected_calibration_error(labels, pred_scores)
+    metrics['ECE'] = expected_calibration_error(labels, pred_scores, num_buckets=num_buckets)
     
     return metrics
 
-'''
-Evaluate performance on validation/test set.
-Returns all the metrics defined above and the loss.
-'''
-def evaluate(model, dataloader, is_bnn=False, n_mc_samples=10):
+def evaluate(model, dataloader, num_trials, num_buckets):
+    model.eval()
+
     all_preds = []
     all_labels = []
     results = {}
-
     loss = 0
     criterion = torch.nn.BCELoss()
 
@@ -437,65 +357,57 @@ def evaluate(model, dataloader, is_bnn=False, n_mc_samples=10):
         for i, (x, y) in enumerate(dataloader):
             x = x.to(device)
             y = y.to(device)
-            n = y.shape[0]
-            
-            if is_bnn:
-                # Monte Carlo Sampling
-                mc_preds = torch.zeros(n_mc_samples, n, device=device)
-                for mc in range(n_mc_samples):
-                    y_preds = model(x)
-                    mc_preds[mc] = y_preds.reshape(-1)
-                y_preds_mean = mc_preds.mean(dim=0)
-            else:
-                # Standard prediction
-                y_preds = model(x)
-                y_preds_mean = y_preds.reshape(-1)
 
+            wrapped_model = ModelWrapper(model, criterion)
+            y_multi_preds = wrapped_model.predict_on_batch(x, iterations=num_trials)
+            y_preds_mean = y_multi_preds.mean(dim=-1) 
+
+            y_preds_mean = y_preds_mean.reshape(-1)  # Ensure it's a 1D vector of size [batch_size]
+            y = y.reshape(-1)  # Ensure target is also 1D vector of size [batch_size]
+            
+            n = y.shape[0]
             loss += criterion(y_preds_mean, y) * n
             n_samples += n
-
             all_preds.extend(y_preds_mean.to('cpu').numpy())
             all_labels.extend(y.to('cpu').numpy())
 
-    results = compute_metrics(all_labels, all_preds)
+    results = compute_metrics(all_labels, all_preds, num_buckets=num_buckets)
     results["loss"] = loss.to('cpu').item() / n_samples
-
     return results
 
 def concat_features(row):
     return np.concatenate([row[f"features_right"], row[f"features_left"]])
 
-'''
---batch_size=256 --corr_thr=0.85 --drop_correlated=no --gamma=0.8808588244592819 --hand=both 
---learning_rate=0.6246956232061768 --minority_oversample=no --model=ShallowANN 
---momentum=0.8046223742478498 --num_epochs=82 --optimizer=SGD --patience=3 --random_state=703 
---scaling_method=StandardScaler --scheduler=step --seed=276 --step_size=11 
---use_feature_scaling=yes --use_scheduler=no
-'''
 @click.command()
-@click.option("--model", default="ShallowANN", help="Options: ANN, BNN, ShallowANN, ShallowBNN")
+@click.option("--model", default="ShallowANN", help="Options: ANN, BNN, ShallowANN, ShallowBNN ")
+@click.option("--dropout_prob", default=0.24180259124462203)
+@click.option("--num_trials", default=1000, help="Options: 100, 500, 1000, 5000, 10000, 50000")
+@click.option("--num_buckets", default=20, help="Options: 5, 10, 20, 50, 100")
 @click.option("--hand", default="both", help="Options: left, right, both")
-@click.option("--learning_rate", default=0.6246956232061768, help="Learning rate for classifier")
-@click.option("--random_state", default=703, help="Random state for classifier")
-@click.option("--seed", default=276, help="Seed for random")
+@click.option("--learning_rate", default=0.3081959128766984, help="Learning rate for classifier")
+@click.option("--random_state", default=526, help="Random state for classifier")
+@click.option("--seed", default=790, help="Seed for random")
 @click.option("--use_feature_scaling",default='yes',help="yes if you want to scale the features, no otherwise")
 @click.option("--scaling_method",default='StandardScaler',help="Options: StandardScaler, MinMaxScaler")
 @click.option("--minority_oversample",default='no',help="Options: 'yes', 'no'")
 @click.option("--batch_size",default=256)
-@click.option("--num_epochs",default=82)
+@click.option("--num_epochs",default=87)
 @click.option("--drop_correlated",default='no',help="Options: yes, no")
-@click.option("--corr_thr",default=0.85)
+@click.option("--corr_thr",default=0.95)
 @click.option("--optimizer",default="SGD",help="Options: SGD, AdamW")
 @click.option("--beta1",default=0.9)
 @click.option("--beta2",default=0.999)
 @click.option("--weight_decay",default=0.0001)
-@click.option("--momentum",default=0.8046223742478498)
-@click.option("--use_scheduler",default='no',help="Options: yes, no")
-@click.option("--scheduler",default='step',help="Options: step, reduce")
-@click.option("--step_size",default=11)
-@click.option("--gamma",default=0.8808588244592819)
-@click.option("--patience",default=3)
+@click.option("--momentum",default=0.9206317439937552)
+@click.option("--use_scheduler",default='yes',help="Options: yes, no")
+@click.option("--scheduler",default='reduce',help="Options: step, reduce")
+@click.option("--step_size",default=18)
+@click.option("--gamma",default=0.683941938387959)
+@click.option("--patience",default=13)
 def main(**cfg):
+    '''
+    save the configurations obtained from wandb (or command line) into the model config file
+    '''
     with open(MODEL_CONFIG_PATH,"w") as f:
         f.write(json.dumps(cfg))
 
@@ -538,44 +450,24 @@ def main(**cfg):
         labels = df_both.loc[:, "label"]
         ids = df_both.loc[:, "id"]
 
-    print("All folds: ")
-    print(f"Number of data: {len(labels)}, PD: {np.sum(labels==1)} ({(np.sum(labels==1)*100)/len(labels)}%)")
-    print(f"Number of unique patients: {len(set(ids))}, PD: {len(set(ids[labels==1]))} ({(len(set(ids[labels==1]))*100)/len(set(ids))}%)")
-    
     '''
     Train+dev and test split
     '''
     features_train, labels_train, ids_train, features_test, labels_test, ids_test = train_test_split(features, labels, ids)
+
     print(f"Number of unique ids in training and test sets: {len(set(ids_train))}, {len(set(ids_test))}")
     assert len(set(ids_train).intersection(set(ids_test))) == 0
+
     '''
     Train-dev split (random)
     '''
     features_train, labels_train, ids_train, features_dev, labels_dev, ids_dev = train_dev_split(features_train, labels_train, ids_train)
-    
-    print("Train set: ")
-    labels = np.asarray(labels_train)
-    ids = np.asarray(ids_train)
-    print(f"Number of data: {len(labels)}, PD: {np.sum(labels==1)} ({(np.sum(labels==1)*100)/len(labels)}%)")
-    print(f"Number of unique patients: {len(set(ids))}, PD: {len(set(ids[labels==1]))} ({(len(set(ids[labels==1]))*100)/len(set(ids))}%)")
 
-    print("Validation set: ")
-    labels = np.asarray(labels_dev)
-    ids = np.asarray(ids_dev)
-    print(f"Number of data: {len(labels)}, PD: {np.sum(labels==1)} ({(np.sum(labels==1)*100)/len(labels)}%)")
-    print(f"Number of unique patients: {len(set(ids))}, PD: {len(set(ids[labels==1]))} ({(len(set(ids[labels==1]))*100)/len(set(ids))}%)")
-    
-    print("Test set: ")
-    labels = np.asarray(labels_test)
-    ids = np.asarray(ids_test)
-    print(f"Number of data: {len(labels)}, PD: {np.sum(labels==1)} ({(np.sum(labels==1)*100)/len(labels)}%)")
-    print(f"Number of unique patients: {len(set(ids))}, PD: {len(set(ids[labels==1]))} ({(len(set(ids[labels==1]))*100)/len(set(ids))}%)")
-    
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
-    
-    used_scaler = None
 
+    # scaling 
+    used_scaler = None
     if cfg['use_feature_scaling']=='yes':
         if cfg['scaling_method'] == 'StandardScaler':
             scaler = StandardScaler()
@@ -591,38 +483,41 @@ def main(**cfg):
     if cfg['minority_oversample']=='yes':
         (X_train, y_train) = oversample.fit_resample(X_train, y_train)
 
+    # dataset and dataloader creation
     y_train = np.asarray(y_train)
     y_dev = np.asarray(y_dev)
     y_test = np.asarray(y_test)
-        
     train_dataset = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_dataset, batch_size=cfg['batch_size'], shuffle=True)
     dev_dataset = TensorDataset(X_dev, y_dev)
     dev_loader = DataLoader(dev_dataset, batch_size=cfg["batch_size"])
     test_dataset = TensorDataset(X_test, y_test)
     test_loader = DataLoader(test_dataset, batch_size = cfg['batch_size'])
-    
+
+    # model initialization 
     model = None
     if cfg['model']=="ANN":
-        model = ANN(features[0].shape[0])
+        model = ANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="BNN":
-        model = BNN(features[0].shape[0])
+        model = BNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ShallowANN":
-        model = ShallowANN(features[0].shape[0])
+        model = ShallowANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ShallowBNN":
-        model = ShallowBNN(features[0].shape[0])
+        model = ShallowBNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     else:
         raise ValueError("Invalid model")
 
     model = model.to(device)
-    
+
+    # optimizer 
     if cfg["optimizer"]=="AdamW":
         optimizer = torch.optim.AdamW(model.parameters(),lr=cfg['learning_rate'],betas=(cfg['beta1'],cfg['beta2']),weight_decay=cfg['weight_decay'])
     elif cfg["optimizer"]=="SGD":
         optimizer = torch.optim.SGD(model.parameters(),lr=cfg['learning_rate'],momentum=cfg['momentum'],weight_decay=cfg['weight_decay'])
     else:
         raise ValueError("Invalid optimizer")
-
+    
+    # scheduler
     if cfg["use_scheduler"]=="yes":
         if cfg['scheduler']=="step":
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=cfg['step_size'], gamma=cfg['gamma'])
@@ -636,8 +531,10 @@ def main(**cfg):
     best_dev_balanced_accuracy = 0.0
     best_dev_f1 = 0.0
     best_dev_auroc = 0.0
+    best_dev_ece = np.finfo('float32').max
     best_model = copy.deepcopy(model)
 
+    model.train()
     for epoch in tqdm(range(cfg['num_epochs'])):
         for idx, (x, y) in enumerate(train_loader):
             x = x.to(device)
@@ -648,14 +545,14 @@ def main(**cfg):
             l = criterion(y_preds.reshape(-1),y)
             l.backward()
             optimizer.step()
-            
         
-        dev_metrics = evaluate(model, dev_loader)
+        dev_metrics = evaluate(model, dev_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
         dev_loss = dev_metrics['loss']
         dev_accuracy = dev_metrics['accuracy']
         dev_balanced_accuracy = dev_metrics['weighted_accuracy']
         dev_auroc = dev_metrics['auroc']
         dev_f1 = dev_metrics['f1_score']
+        dev_ece = dev_metrics['ECE']
 
         if cfg['use_scheduler']=="yes":
             if cfg['scheduler']=='step':
@@ -670,12 +567,11 @@ def main(**cfg):
              best_dev_balanced_accuracy = dev_balanced_accuracy
              best_dev_auroc = dev_auroc
              best_dev_f1 = dev_f1
+             best_dev_ece = dev_ece
    
-    results = evaluate(best_model, test_loader)
-    if cfg['model'] == "BNN" or cfg['model'] == "ShallowBNN":
-        results = evaluate(best_model, test_loader, True)
-
-
+    results = evaluate(best_model, test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"])
+    print("\nDev Results\n" + "="*20)
+    print({"dev_accuracy":best_dev_accuracy, "dev_balanced_accuracy":best_dev_balanced_accuracy, "dev_loss":best_dev_loss, "dev_auroc":best_dev_auroc, "dev_f1":best_dev_f1, "dev_ece":best_dev_ece})
 
     '''
     Save best model
@@ -686,20 +582,18 @@ def main(**cfg):
     Test whether the model can be loaded successfully
     '''
     if cfg['model']=="ShallowANN":
-        loaded_model = ShallowANN(features[0].shape[0])
+        loaded_model = ShallowANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ShallowBNN":
-        loaded_model = ShallowBNN(features[0].shape[0])
+        loaded_model = ShallowBNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="ANN":
-        loaded_model = ANN(features[0].shape[0])
+        loaded_model = ANN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
     elif cfg['model']=="BNN":
-        loaded_model = BNN(features[0].shape[0])
-
-    loaded_model.load_state_dict(torch.load(MODEL_PATH))
+        loaded_model = BNN(features[0].shape[0], drop_prob=cfg["dropout_prob"])
+    loaded_model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
     loaded_model = loaded_model.to(device)
-    print(evaluate(loaded_model,test_loader))
-    print(cfg)
-    print(loaded_model)
-    print(results)
+    print("\nTest Results\n" + "="*20)
+    print(evaluate(loaded_model,test_loader, num_trials = cfg["num_trials"], num_buckets = cfg["num_buckets"]))
+ 
     
 if __name__ == "__main__":
     main()
