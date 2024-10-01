@@ -6,35 +6,28 @@ import math
 import json
 import random
 import click
-import imblearn
 import scipy
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import scipy.stats as stats
 import subprocess as sp
 
-import baal.bayesian.dropout as mcdropout
 from baal.modelwrapper import ModelWrapper
 
-from pandas import DataFrame
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, precision_recall_curve, average_precision_score
 from sklearn.metrics import auc, roc_auc_score, roc_curve, f1_score, accuracy_score, recall_score, precision_score, brier_score_loss
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from mlxtend.plotting import plot_confusion_matrix
 from imblearn.over_sampling import SMOTE, SMOTENC, SVMSMOTE, ADASYN, BorderlineSMOTE, KMeansSMOTE, SMOTEN, RandomOverSampler
 from imblearn.combine import SMOTEENN, SMOTETomek
 
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from torch.distributions import Categorical
-from torch_uncertainty.layers.bayesian import BayesLinear
 
 from constants import *
+from models import *
+
 
 '''
 Find the GPU that has max free space
@@ -58,17 +51,27 @@ if device == 'cuda':
     gpu_id = np.argmax(results)
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
+'''
+creating necessary dirs for saving the trained models
+'''
+if not os.path.exists(MODEL_BASE_PATH):
+    os.mkdir(MODEL_BASE_PATH)
+    os.mkdir(os.path.join(MODEL_BASE_PATH,"uncertainty_aware_fusion"))
+
+if not os.path.exists(os.path.join(MODEL_BASE_PATH,"uncertainty_aware_fusion")):
+    os.mkdir(os.path.join(MODEL_BASE_PATH,"uncertainty_aware_fusion"))
+
 #1. Load dev and test sets (participant ids)
-with open(os.path.join(BASE_DIR,"data/dev_set_participants.txt")) as f:
+with open(os.path.join(DATA_BASE_DIR,"dev_set_participants.txt")) as f:
     ids = f.readlines()
     dev_ids = set([x.strip() for x in ids])
 
-with open(os.path.join(BASE_DIR,"data/test_set_participants.txt")) as f:
+with open(os.path.join(DATA_BASE_DIR,"test_set_participants.txt")) as f:
     ids = f.readlines()
     test_ids = set([x.strip() for x in ids])
-
 	
 print(f"Number of patients in the dev and test set: {len(dev_ids)}, {len(test_ids)}")
+
 
 #2. process the datasets
 '''
@@ -83,6 +86,7 @@ def parse_date(name:str):
     match = re.search(r"\d{4}-\d{2}-\d{2}", name)
     date = match.group()
     return date
+
 
 def load_smile_data(drop_correlated = True, corr_thr = 0.85):
     df = pd.read_csv(FACIAL_FEATURES_FILE)
@@ -137,6 +141,7 @@ def load_smile_data(drop_correlated = True, corr_thr = 0.85):
 
     return features, df["label"], df["id"], columns, df["id_date"]
 
+
 def load_qbf_data(drop_correlated = False, corr_thr = 0.85, feature_files=[AUDIO_FEATURES_FILE]):
     def parse_patient_id(name:str):
         if name.startswith("NIH"): [ID, *_] = name.split("-")
@@ -152,6 +157,7 @@ def load_qbf_data(drop_correlated = False, corr_thr = 0.85, feature_files=[AUDIO
 
     assert (len(dataframes)>=1) and (len(dataframes)<=2)
     df = dataframes[0]
+    df = df.copy()
     #print(df.columns[:20]) #'Filename', 'Participant_ID', 'gender', 'age', 'race', 'pd', f'wavlm_feature{x}'
     for i in range(1,len(feature_files)):
         df = pd.merge(left=df, right=dataframes[i], how='inner', on='Filename')
@@ -202,6 +208,7 @@ def load_qbf_data(drop_correlated = False, corr_thr = 0.85, feature_files=[AUDIO
     df["id_date"] = df["id"]+"#"+df["date"]
     df["label"] = df["pd"]
     return features, df["label"], df["id"], columns, df["id_date"]
+
 
 def load_finger_data(hand="left",drop_correlated = False, corr_thr = 0.85):
     '''
@@ -271,6 +278,7 @@ def load_finger_data(hand="left",drop_correlated = False, corr_thr = 0.85):
 
     return features, df["label"], df["id"], columns, df["id_date"]
 
+
 '''
 Split the dataframe into train(+dev) and test sets
 '''
@@ -278,6 +286,7 @@ def train_test_split(df):
     train_df = df[~df["id"].isin(test_ids)]
     test_df = df[df["id"].isin(test_ids)]
     return train_df, test_df
+
 
 '''
 Randomly split the train set into train and validation
@@ -288,6 +297,7 @@ def train_dev_split(train_df, dev_size=0.20):
     train_df = train_df[~train_df["id"].isin(dev_ids)]
     return train_df, dev_df
 
+
 '''
 Given a dataframe, perform oversampling
 input_df: must contain columns features_0, features_1, ..., features_(N-1), and label
@@ -297,8 +307,10 @@ other columns (i.e., id, filename, etc.) will be removed.
 def concat_features(row):
     return np.concatenate([row[f"features_{i}"] for i in range(NUM_MODELS)])
 
+
 def concat_finger_features(row):
     return np.concatenate([row[f"features_right"], row[f"features_left"]])
+
 
 def oversample(input_df, sampler):
     feature_shapes = [input_df.iloc[0][f"features_{i}"].shape[0] for i in range(NUM_MODELS)]
@@ -325,7 +337,9 @@ def oversample(input_df, sampler):
     output_df = pd.DataFrame.from_dict(output_data)
     return output_df
 
+
 NUM_MODELS = 0 #just initiate here, later updated based on config
+
 
 '''
 Pytorch Dataset class
@@ -350,289 +364,6 @@ class TensorDataset(Dataset):
 
     def __len__(self):
         return len(self.labels)
-
-'''
-ML baselines using pytorch + BAAL
-'''
-class ANN(nn.Module):
-    def __init__(self, n_features, drop_prob):
-        super(ANN,self).__init__()
-        self.fc1 = nn.Linear(in_features=n_features, out_features=(int)(n_features/2), bias=True)
-        self.drop1 = mcdropout.Dropout(p = drop_prob)
-        self.fc2 = nn.Linear(in_features=self.fc1.out_features, out_features=1,bias=True)
-        self.drop2 = mcdropout.Dropout(p = drop_prob)
-        self.hidden_activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
-
-    def forward(self,x):
-        x1 = self.hidden_activation(self.fc1(x))
-        x1 = self.drop1(x1)
-        y = self.fc2(x1)
-        y = self.drop2(y)
-        y = self.sig(y)
-        return y
-
-
-class BNN(nn.Module):
-    def __init__(self, n_features, drop_prob):
-        super(BNN, self).__init__()
-        self.fc1 = BayesLinear(in_features=n_features, out_features=int(n_features / 2), bias=True)
-        self.drop1 = mcdropout.Dropout(p=drop_prob)
-        self.fc2 = BayesLinear(in_features=self.fc1.out_features, out_features=1, bias=True)
-        self.drop2 = mcdropout.Dropout(p=drop_prob)
-        self.hidden_activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x):
-        x1 = self.hidden_activation(self.fc1(x))
-        x1 = self.drop1(x1)
-        y = self.fc2(x1)
-        y = self.drop2(y)
-        y = self.sig(y)
-        return y
-
-'''
-ML baselines using pytorch + BAAL
-'''
-class ShallowANN(nn.Module):
-    def __init__(self, n_features, drop_prob):
-        super(ShallowANN, self).__init__()
-        self.fc = nn.Linear(in_features=n_features, out_features=1,bias=True)
-        self.drop = mcdropout.Dropout(p = drop_prob)
-        self.activation = nn.ReLU()
-        self.sig = nn.Sigmoid()
-    def forward(self,x):
-        y = self.fc(x)
-        y = self.drop(y)
-        y = self.sig(y)
-        return y
-
-class ShallowBNN(nn.Module):
-    def __init__(self, n_features, drop_prob):
-        super(ShallowBNN, self).__init__()
-        # Replace nn.Linear with BayesLinear
-        self.fc = BayesLinear(in_features=n_features, out_features=1, bias=True)
-        self.drop = mcdropout.Dropout(p=drop_prob)
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x):
-        y = self.fc(x)
-        y = self.drop(y)
-        y = self.sig(y)
-        return y
-
-'''
-Final predictor
-Contains two modules:
-    1. a custom cross-attention module
-    2. prediction network
-'''
-class CrossAttention(nn.Module):
-    def __init__(self, input_dim, query_dim, drop_prob, uncertainty_weight):
-        super(CrossAttention, self).__init__()
-        self.input_dim = input_dim
-        self.query_dim = query_dim
-        self.drop_prob = drop_prob
-        self.uncertainty_weight = uncertainty_weight
-        
-        self.form_query = torch.nn.Linear(input_dim, query_dim)
-        self.form_key = torch.nn.Linear(input_dim, query_dim)
-        self.form_value = torch.nn.Linear(input_dim, query_dim)
-
-        self.drop = mcdropout.Dropout(p = drop_prob)
-        self.softmax = nn.Softmax(dim=-1)
-        self.final_layer = torch.nn.Linear((NUM_MODELS-1) * self.input_dim, self.input_dim)
-
-    def forward(self, features, prediction_variances):
-        prediction_variances = torch.stack(prediction_variances).transpose(0,1) #(n, N)
-        
-        queries = []
-        keys = []
-        values = []
-        for i in range(NUM_MODELS):
-            q = self.form_query(features[i])
-            q = self.drop(q)
-
-            key = self.form_key(features[i])
-            key = self.drop(q)
-
-            val = self.form_value(features[i])
-            val = self.drop(val)
-
-            queries.append(q)
-            keys.append(key)
-            values.append(val)
-
-        queries = torch.stack(queries) #(N, n, d)
-        queries = queries.transpose(0,1) #(n, N, d)
-        keys = torch.stack(keys) #(N, n, d)
-        keys_T = keys.transpose(0,1).transpose(-1,-2) #(n, d, N)
-        values = torch.stack(values) #(N, n, d)
-        values = values.transpose(0,1) #(n, N, d)
-
-        scores = torch.matmul(queries, keys_T) #(n, N, N)
-        #scores = self.softmax(scores) #the mid dimension sums up to 1, e.g., rows of scores[0]
-
-        vars = prediction_variances.repeat(1, NUM_MODELS).reshape(-1, NUM_MODELS, NUM_MODELS) #(n, N, N)
-        vars = vars + prediction_variances.unsqueeze(dim=-1) #(n, N, N)
-        scores = scores - self.uncertainty_weight*vars #(n, N, N)
-        scores = self.softmax(scores)
-        
-        zs = torch.matmul(scores, values) #(n, N, d)
-        z = zs.reshape((-1, NUM_MODELS*self.query_dim)) #(n, N*d)
-        return z
-
-class CrossAttentionBNN(nn.Module):
-    def __init__(self, input_dim, query_dim, drop_prob, uncertainty_weight):
-        super(CrossAttentionBNN, self).__init__()
-        self.input_dim = input_dim
-        self.query_dim = query_dim
-        self.drop_prob = drop_prob
-        self.uncertainty_weight = uncertainty_weight
-        
-        self.form_query = BayesLinear(input_dim, query_dim, bias=True)
-        self.form_key = BayesLinear(input_dim, query_dim, bias=True)
-        self.form_value = BayesLinear(input_dim, query_dim, bias=True)
-
-        self.drop = mcdropout.Dropout(p=drop_prob)
-        self.softmax = nn.Softmax(dim=-1)
-        self.final_layer = BayesLinear((NUM_MODELS - 1) * self.input_dim, self.input_dim, bias=True)
-
-    def forward(self, features, prediction_variances):
-        prediction_variances = torch.stack(prediction_variances).transpose(0, 1)  # (n, N)
-        
-        queries = []
-        keys = []
-        values = []
-        for i in range(NUM_MODELS):
-            q = self.form_query(features[i])
-            q = self.drop(q)
-
-            key = self.form_key(features[i])
-            key = self.drop(key)  # Fix: should be key, not q
-
-            val = self.form_value(features[i])
-            val = self.drop(val)
-
-            queries.append(q)
-            keys.append(key)
-            values.append(val)
-
-        queries = torch.stack(queries)  # (N, n, d)
-        queries = queries.transpose(0, 1)  # (n, N, d)
-        keys = torch.stack(keys)  # (N, n, d)
-        keys_T = keys.transpose(0, 1).transpose(-1, -2)  # (n, d, N)
-        values = torch.stack(values)  # (N, n, d)
-        values = values.transpose(0, 1)  # (n, N, d)
-
-        scores = torch.matmul(queries, keys_T)  # (n, N, N)
-
-        vars = prediction_variances.repeat(1, NUM_MODELS).reshape(-1, NUM_MODELS, NUM_MODELS)  # (n, N, N)
-        vars = vars + prediction_variances.unsqueeze(dim=-1)  # (n, N, N)
-        scores = scores - self.uncertainty_weight * vars  # (n, N, N)
-        scores = self.softmax(scores)
-
-        zs = torch.matmul(scores, values)  # (n, N, d)
-        z = zs.reshape((-1, NUM_MODELS * self.query_dim))  # (n, N*d)
-        return z
-
-
-class HybridFusionNetworkWithUncertainty(nn.Module):
-    def __init__(self, feature_shapes, config):
-        super(HybridFusionNetworkWithUncertainty, self).__init__()
-        self.hidden_dim = config["hidden_dim"]
-        self.query_dim = config["query_dim"]
-        self.last_hidden_dim = config["last_hidden_dim"]
-        self.drop_prob = config["dropout_prob"]
-        self.uncertainty_weight = config["uncertainty_weight"]
-        '''
-        input: features_i is of shape (feature_shapes[i]); y_pred_score_i
-        total input size: feature_shapes[i]+1
-        '''
-        self.intra_linear = nn.ModuleList()
-        self.layer_norm = nn.LayerNorm(self.hidden_dim)
-        self.cross_attention = CrossAttention(self.hidden_dim, self.query_dim, self.drop_prob, self.uncertainty_weight) #shared weights
-
-        for i in range(NUM_MODELS):
-            linear_layer = nn.Linear(in_features=feature_shapes[i], out_features=self.hidden_dim, bias=True)
-            self.intra_linear.append(linear_layer)
-
-        self.lin1 = nn.Linear(in_features=((NUM_MODELS*self.query_dim)+NUM_MODELS), out_features=self.last_hidden_dim)
-        self.fc = nn.Linear(in_features=self.last_hidden_dim, out_features=1)
-        self.softmax = nn.Softmax(dim=-1)
-        self.sigmoid = nn.Sigmoid()
-        self.relu = nn.ReLU()
-
-        self.intra_linear_dropout = mcdropout.Dropout(p = self.drop_prob)
-        self.lin1_dropout = mcdropout.Dropout(p = self.drop_prob)
-    
-    def forward(self, inputs):
-        (features, predicted_scores, prediction_variances) = inputs
-        # print([features[i].shape for i in range(len(features))]) #(n, 232), (n, 1024), (n, 42)
-        
-        hiddens = []
-        for i in range(NUM_MODELS):
-            hidden_representation = self.relu(self.intra_linear[i](features[i])) #projection: (n, d_{x_i}) -> (n,d)
-            hidden_representation = self.intra_linear_dropout(hidden_representation)
-            hidden_representation = self.relu(hidden_representation)
-            hidden_representation = self.layer_norm(hidden_representation)
-            hiddens.append(hidden_representation)
-
-        pred_scores = torch.stack(predicted_scores).transpose(0,1) #(n, N)
-        context = self.cross_attention(torch.cat([torch.unsqueeze(hiddens[k],0) for k in range(NUM_MODELS)]), prediction_variances) #(n, d_q)
-        outputs = torch.cat((context, pred_scores),dim=-1) #(n, N+d_q)
-        outputs = self.lin1(outputs) #(n, last_hidden_dim)
-        outputs = self.lin1_dropout(outputs) 
-        logits = self.fc(outputs) #(n,1)
-        probs = self.sigmoid(logits) #(n,1)
-        return probs
-
-class HybridFusionNetworkWithUncertaintyBNN(nn.Module):
-    def __init__(self, feature_shapes, config):
-        super(HybridFusionNetworkWithUncertaintyBNN, self).__init__()
-        self.hidden_dim = config["hidden_dim"]
-        self.query_dim = config["query_dim"]
-        self.last_hidden_dim = config["last_hidden_dim"]
-        self.drop_prob = config["dropout_prob"]
-        self.uncertainty_weight = config["uncertainty_weight"]
-
-        self.intra_linear = nn.ModuleList()
-        self.layer_norm = nn.LayerNorm(self.hidden_dim)
-        self.cross_attention = CrossAttentionBNN(self.hidden_dim, self.query_dim, self.drop_prob, self.uncertainty_weight)  # Update to use BNN CrossAttention
-
-        for i in range(NUM_MODELS):
-            linear_layer = BayesLinear(in_features=feature_shapes[i], out_features=self.hidden_dim, bias=True)
-            self.intra_linear.append(linear_layer)
-
-        self.lin1 = BayesLinear(in_features=((NUM_MODELS * self.query_dim) + NUM_MODELS), out_features=self.last_hidden_dim, bias=True)
-        self.fc = BayesLinear(in_features=self.last_hidden_dim, out_features=1, bias=True)
-
-        self.softmax = nn.Softmax(dim=-1)
-        self.sigmoid = nn.Sigmoid()
-        self.relu = nn.ReLU()
-
-        self.intra_linear_dropout = mcdropout.Dropout(p=self.drop_prob)
-        self.lin1_dropout = mcdropout.Dropout(p=self.drop_prob)
-
-    def forward(self, inputs):
-        (features, predicted_scores, prediction_variances) = inputs
-
-        hiddens = []
-        for i in range(NUM_MODELS):
-            hidden_representation = self.relu(self.intra_linear[i](features[i]))  # (n, d_{x_i}) -> (n, d)
-            hidden_representation = self.intra_linear_dropout(hidden_representation)
-            hidden_representation = self.relu(hidden_representation)
-            hidden_representation = self.layer_norm(hidden_representation)
-            hiddens.append(hidden_representation)
-
-        pred_scores = torch.stack(predicted_scores).transpose(0, 1)  # (n, N)
-        context = self.cross_attention(torch.cat([torch.unsqueeze(hiddens[k], 0) for k in range(NUM_MODELS)]), prediction_variances)  # (n, d_q)
-        outputs = torch.cat((context, pred_scores), dim=-1)  # (n, N + d_q)
-        outputs = self.lin1(outputs)  # (n, last_hidden_dim)
-        outputs = self.lin1_dropout(outputs)
-        logits = self.fc(outputs)  # (n, 1)
-        probs = self.sigmoid(logits)  # (n, 1)
-        return probs
 
 
 '''
@@ -673,11 +404,13 @@ def expected_calibration_error(y, y_pred_scores, num_buckets=20):
             ece += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prob_in_bin
     return ece.item()
 
+
 def safe_divide(numerator, denominator):
     if denominator == 0:
         return 0
     else:
         return numerator / denominator
+
 
 '''
 Given labels and prediction scores, make a comprehensive evaluation. 
@@ -738,6 +471,7 @@ def compute_metrics(y_true, y_pred_scores, threshold = 0.5):
     metrics['ECE'] = expected_calibration_error(labels, pred_scores)
     
     return metrics
+
 
 '''
 Main evaluation loop to test the fusion model
@@ -814,112 +548,6 @@ def evaluate_fusion_model(fusion_model, dataloader, prediction_models, config, s
     return metrics
 
 
-# def evaluate_fusion_model(fusion_model, dataloader, prediction_models, config, split="dev"):
-#     fusion_model.eval()
-#     z_critical = scipy.stats.t.ppf(q=0.975, df=config["num_trials"] - 1)
-
-#     all_labels = []  # true labels
-#     all_pred_scores = [[] for _ in range(NUM_MODELS)]  # unimodal prediction scores
-#     all_final_predictions = []  # fusion predictions
-#     uncertain_indices = []  # indices where the 95% CI contains 0.5
-#     loss = 0  # average loss
-#     n_samples = 0  # number of examples in the dataloader
-
-#     criterion = torch.nn.BCELoss()  # loss function
-#     wrapped_prediction_models = [ModelWrapper(prediction_models[i], criterion) for i in range(NUM_MODELS)]
-#     wrapped_fusion_model = ModelWrapper(fusion_model, criterion)
-
-#     for idx, batch in enumerate(dataloader):
-#         x = [[] for _ in range(NUM_MODELS)]  # [x0, x1, ..., xn]
-#         y_pred_scores = [[] for _ in range(NUM_MODELS)]  # probs[y0, y1, ..., yn]
-#         y_preds = [[] for _ in range(NUM_MODELS)]  # binary[y0, y1, ..., yn]
-#         y_vars = [[] for _ in range(NUM_MODELS)]
-
-#         (x, y) = batch
-#         y = y.to(device)
-
-#         for i in range(NUM_MODELS):
-#             x[i] = x[i].to(device)
-
-#             if (split != "test") and (config["validation_random_noise"] == "yes"):
-#                 noise = torch.randn(x[i].shape).to(device)
-#                 adjusted_noise = noise * config["noise_variance"]
-#                 x[i] += adjusted_noise
-            
-#             is_bnn = 'BNN' in type(prediction_models[i]).__name__
-
-#             # Monte Carlo Sampling for unimodal models if is_bnn is True
-#             if is_bnn:
-#                 mc_preds = torch.zeros(config["num_trials"], x[i].size(0), device=device)
-#                 for mc in range(config["num_trials"]):
-#                     y_multi_preds = prediction_models[i](x[i])
-#                     mc_preds[mc] = y_multi_preds.reshape(-1)
-#                 y_pred_scores[i] = mc_preds.mean(dim=0)
-#                 y_vars[i] = mc_preds.std(dim=0)
-#             else:
-#                 # Predictions for unimodal models
-#                 y_multi_preds = wrapped_prediction_models[i].predict_on_batch(x[i], iterations=config["num_trials"])
-#                 y_pred_scores[i] = y_multi_preds.mean(dim=-1).reshape(-1)
-#                 y_vars[i] = y_multi_preds.std(dim=-1).reshape(-1)
-
-#             y_preds[i] = (y_pred_scores[i] >= 0.5)
-#             all_pred_scores[i].extend(y_pred_scores[i].to('cpu').numpy())
-
-#         all_labels.extend(y.to('cpu').numpy())
-
-#         # Forward pass
-#         with torch.no_grad():
-#             is_bnn = 'BNN' in type(fusion_model).__name__
-#             if is_bnn:
-#                 # Monte Carlo Sampling for fusion model
-#                 final_pred_scores = torch.zeros(config["num_trials"], x[0].size(0), device=device)
-#                 for mc in range(config["num_trials"]):
-#                     final_pred_scores[mc] = fusion_model((x, y_pred_scores, y_vars)).squeeze()
-
-#                 final_pred_scores = final_pred_scores.mean(dim=0)
-#                 std_dev = final_pred_scores.std(dim=0)
-#             else:
-#                 final_pred_scores = wrapped_fusion_model.predict_on_batch((x, y_pred_scores, y_vars), iterations=config["num_trials"])
-#                 final_pred_scores = final_pred_scores.mean(dim=-1).reshape(-1)
-#                 std_dev = final_pred_scores.std(dim=-1).reshape(-1)
-
-#             # Calculate standard error and uncertainty indices
-#             standard_error = (z_critical * std_dev) / math.sqrt(len(final_pred_scores))
-#             index_mask = (final_pred_scores - standard_error <= 0.50) & (final_pred_scores + standard_error >= 0.50)
-
-#             n = final_pred_scores.shape[0]
-#             loss += criterion(final_pred_scores.reshape(-1), y) * n
-#             n_samples += n
-
-#         all_final_predictions.extend(final_pred_scores.cpu().numpy())
-#         uncertain_indices.extend(index_mask.cpu().numpy())
-
-#     # Evaluate
-#     uncertain_indices = np.asarray(uncertain_indices).flatten()
-#     all_labels = np.asarray(all_labels).flatten()
-#     all_final_predictions = np.asarray(all_final_predictions).flatten()
-
-#     if split == "test":
-#         coverage = (len(all_labels) - uncertain_indices.sum()) / len(all_labels)
-#         all_labels = all_labels[~uncertain_indices]
-#         all_final_predictions = all_final_predictions[~uncertain_indices]
-
-#     metrics = compute_metrics(all_labels, all_final_predictions)
-#     metrics["loss"] = loss.to('cpu').item() / n_samples
-#     if split == "test":
-#         metrics['coverage'] = coverage
-
-#     return metrics
-
-
-'''
---batch_size=1024 --dropout_prob=0.495989214406461 --gamma=0.57143922410234 --hidden_dim=512 
---increase_variance=no --last_hidden_dim=128 --learning_rate=0.020724443604128343 
---minority_oversample=no --model_subset_choice=0 --momentum=0.6897821582954526 
---num_epochs=164 --optimizer=SGD --patience=5 --query_dim=64 --random_state=357 
---sampler=SMOTE --scheduler=step --seed=423 --step_size=5 --train_random_noise=no 
---uncertainty_weight=81.81790352752515 --use_scheduler=no --validation_random_noise=no
-'''
 @click.command()
 @click.option("--fusion_model", default="bayesian", help="Options: 'base', 'bayesian'")
 @click.option("--learning_rate", default=0.020724443604128343, help="Learning rate for classifier")
@@ -971,13 +599,12 @@ def main(**cfg):
     torch.backends.cudnn.enabled = False
 
     selected_models = MODEL_SUBSETS[cfg["model_subset_choice"]]
-    
     NUM_MODELS = len(selected_models)
+
     '''
     Load the paths of the saved models that will be fused together
     '''
     model_paths = []
-    
     for i in range(NUM_MODELS):
         path = {}
         MODEL_TAG = selected_models[i]
@@ -985,13 +612,7 @@ def main(**cfg):
         path["PREDICTOR_MODEL"] = os.path.join(MODEL_BASE_PATH, MODEL_TAG,"predictive_model/model.pth")
         path["SCALER"] = os.path.join(MODEL_BASE_PATH, MODEL_TAG,"scaler/scaler.pth")
         model_paths.append(path)
-
-    # for i in range(NUM_MODELS):
-    #     for key, path in model_paths[i].items():
-    #         assert os.path.exists(path)
-
-    # print("All scaler, and predictive model paths are set and loaded.")
-    
+   
     processed_datasets = []
     for i in range(NUM_MODELS):
         predictor_config = {}
@@ -1023,7 +644,7 @@ def main(**cfg):
         elif "facial_expression_smile" in model_name:
             features, labels, ids, columns, row_ids = load_smile_data(drop_correlated = drop_correlated, corr_thr = predictor_config["corr_thr"])
         else:
-            assert(False, "Unfamiliar model name.")
+            raise ValueError("Invalid model name")
 
         # scale if needed
         if predictor_config["use_feature_scaling"]=="yes":
@@ -1095,14 +716,14 @@ def main(**cfg):
 
         if predictor_config["model"] == "ShallowANN":    
             frozen_model = ShallowANN(feature_shapes[i], drop_prob=predictor_config["dropout_prob"])
-            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"]))
+            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"], weights_only=True))
             frozen_model = frozen_model.to(device)
             frozen_model.fc.weight.requires_grad = False
             frozen_model.fc.bias.requires_grad = False
 
         elif predictor_config["model"] == "ShallowBNN":    
             frozen_model = ShallowBNN(feature_shapes[i], drop_prob=predictor_config["dropout_prob"])
-            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"]))
+            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"], weights_only=True))
             frozen_model = frozen_model.to(device)
             frozen_model.fc.weight_mu.requires_grad = False  # Adjusted for BayesLinear
             frozen_model.fc.weight_sigma.requires_grad = False  # Adjusted for BayesLinear
@@ -1111,7 +732,7 @@ def main(**cfg):
 
         elif predictor_config["model"] == "ANN":
             frozen_model = ANN(feature_shapes[i], drop_prob=predictor_config["dropout_prob"])
-            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"]))
+            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"], weights_only=True))
             frozen_model = frozen_model.to(device)
             frozen_model.fc1.weight.requires_grad = False
             frozen_model.fc1.bias.requires_grad = False
@@ -1120,7 +741,7 @@ def main(**cfg):
 
         elif predictor_config["model"] == "BNN":
             frozen_model = BNN(feature_shapes[i], drop_prob=predictor_config["dropout_prob"])
-            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"]))
+            frozen_model.load_state_dict(torch.load(model_paths[i]["PREDICTOR_MODEL"], weights_only=True))
             frozen_model = frozen_model.to(device)
             frozen_model.fc1.weight_mu.requires_grad = False  # Adjusted for BayesLinear
             frozen_model.fc1.weight_sigma.requires_grad = False  # Adjusted for BayesLinear
@@ -1197,18 +818,9 @@ def main(**cfg):
                     adjusted_noise = noise * noise_variance
                     x[i] += adjusted_noise
 
-                if 'BNN' in type(prediction_models[i]).__name__:  # Use MC Sampling for BNN
-                    mc_preds = torch.zeros(cfg["num_trials"], x[i].size(0), device=device)
-                    for mc in range(cfg["num_trials"]):
-                        y_multi_preds = prediction_models[i](x[i])
-                        mc_preds[mc] = y_multi_preds.reshape(-1)
-                    y_pred_scores[i] = mc_preds.mean(dim=0)
-                    y_vars[i] = mc_preds.std(dim=0)
-                else:
-                    # Predictions for unimodal models
-                    y_multi_preds = wrapped_prediction_models[i].predict_on_batch(x[i], iterations=cfg["num_trials"])
-                    y_pred_scores[i] = y_multi_preds.mean(dim=-1).reshape(-1)
-                    y_vars[i] = y_multi_preds.std(dim=-1).reshape(-1)
+                y_multi_preds = wrapped_prediction_models[i].predict_on_batch(x[i], iterations=cfg["num_trials"])
+                y_pred_scores[i] = y_multi_preds.mean(dim=-1).reshape(-1)
+                y_vars[i] = y_multi_preds.std(dim=-1).reshape(-1)
 
                 y_preds[i] = (y_pred_scores[i] >= 0.5)
                 all_pred_scores[i].extend(y_pred_scores[i].to('cpu').numpy())
@@ -1221,7 +833,6 @@ def main(**cfg):
             loss = criterion(final_predictions.reshape(-1), y)
             loss.backward()
             optimizer.step()
-
 
         #eval on dev set
         dev_metrics = evaluate_fusion_model(fusion_model, dev_loader, prediction_models, cfg)
@@ -1250,11 +861,12 @@ def main(**cfg):
             best_dev_ece = dev_ece
 
     test_metrics = evaluate_fusion_model(best_model, test_loader, prediction_models, cfg, split="test")
-    print(test_metrics)
+    print("\nDev Results\n" + "="*20)
+    print({"dev_accuracy":best_dev_accuracy, "dev_balanced_accuracy":best_dev_balanced_accuracy, "dev_loss":best_dev_loss, "dev_auroc":best_dev_auroc, "dev_f1":best_dev_f1, "dev_ece":best_dev_ece})
 
-    # '''
+
+
     # Save best model
-    # '''
     torch.save(best_model.to('cpu').state_dict(),MODEL_PATH)
 
     if cfg["fusion_model"] == "base":
@@ -1262,9 +874,9 @@ def main(**cfg):
     else:
         loaded_model = HybridFusionNetworkWithUncertaintyBNN(feature_shapes, cfg)
 
-    loaded_model.load_state_dict(torch.load(MODEL_PATH))
+    loaded_model.load_state_dict(torch.load(MODEL_PATH, weights_only=True))
     loaded_model = loaded_model.to(device)
-    print("="*20)
+    print("\nTest Results\n" + "="*20)
     print(evaluate_fusion_model(loaded_model, test_loader, prediction_models, cfg, split="test"))
 
 if __name__ == "__main__":
