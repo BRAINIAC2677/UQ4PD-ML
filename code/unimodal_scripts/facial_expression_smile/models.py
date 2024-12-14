@@ -64,13 +64,13 @@ class ShallowBNN(nn.Module):
     def __init__(self, n_features, drop_prob):
         super(ShallowBNN, self).__init__()
         self.fc = bayesian.BayesLinear(in_features=n_features, out_features=1, bias=True)
-        self.drop = mcdropout.Dropout(p=drop_prob)
+        # self.drop = mcdropout.Dropout(p=drop_prob)
         self.activation = nn.ReLU()
         self.sig = nn.Sigmoid()
 
     def forward(self, x):
         y = self.fc(x)
-        y = self.drop(y)
+        # y = self.drop(y)
         y = self.sig(y)
         return y
 

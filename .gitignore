@@ -1,5 +1,7 @@
 # custom 
 /saved_models/*
+/uqparknet/*
+/lightning_logs/*
 
 # Compiled source #
 ###################

@@ -21,6 +21,8 @@ from tqdm import tqdm
 from constants import *
 from models import *
 
+from torch_uncertainty.losses import ELBOLoss
+
 '''
 Find the GPU that has max free space
 '''
@@ -456,6 +458,10 @@ def main(**cfg):
     dev_loader = DataLoader(dev_dataset, batch_size=cfg["batch_size"])
     test_dataset = TensorDataset(X_test, y_test)
     test_loader = DataLoader(test_dataset, batch_size = cfg['batch_size'])
+
+    print(f'size of train set: {len(train_dataset)}')
+    print(f'size of val set: {len(dev_dataset)}')
+    print(f'size of test set: {len(test_dataset)}')
 
     # model initialization 
     model = None
