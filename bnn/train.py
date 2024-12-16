@@ -5,7 +5,6 @@ from torch_uncertainty.utils import TUTrainer
 from torch_uncertainty.losses import ELBOLoss
 
 from routines import ClassificationRoutine
-from datasets import ParkSmileDataset
 from datamodules import ParkSmileDataModule
 from models.park_smile import BNN, ShallowBNN
 
@@ -39,7 +38,7 @@ print(f'size of test set: {len(datamodule.test_dataloader().dataset)}')
 
 
 model = ShallowBNN(datamodule.num_features)
-trainer = TUTrainer(accelerator="gpu", enable_progress_bar=False, log_every_n_steps=10, max_epochs=100)
+trainer = TUTrainer(accelerator="cpu", enable_progress_bar=False, log_every_n_steps=10, max_epochs=100)
 
 loss = ELBOLoss(
     model=model,

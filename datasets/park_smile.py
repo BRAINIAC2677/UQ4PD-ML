@@ -53,4 +53,4 @@ class ParkSmileDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, index):
-        return torch.tensor(self.features[index], dtype=torch.float32), torch.tensor(self.labels[index], dtype=torch.float32)
+        return torch.tensor(self.features[index], dtype=torch.float32), torch.tensor(self.labels[index], dtype=torch.long)
