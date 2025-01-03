@@ -13,7 +13,6 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 import numpy as np
 import subprocess as sp
-import matplotlib.pyplot as plt
 
 import random
 import click
@@ -111,9 +110,11 @@ def load(drop_correlated = True, corr_thr = 0.85, hand="both"):
     '''
     Drop data point if any of the feature is null
     '''
+    print(f"Number of data points before dropping null values: {len(df)}")
     df = df.dropna(subset = df.columns.difference(['Unnamed: 0','filename','Protocol','Participant_ID','Task',
                 'Duration','FPS','Frame_Height','Frame_Width','gender','age','race',
                 'ethnicity']), how='any')
+    print(f"Number of data points after dropping null values: {len(df)}")
     
     '''
     Restrict only to one hand (if specified)
@@ -131,6 +132,9 @@ def load(drop_correlated = True, corr_thr = 0.85, hand="both"):
     '''
     Drop columns (if set true) if it is correlated with another one with PCC>thr
     '''
+
+    print(f"df_features.shape: {df_features.shape}")
+
     if drop_correlated:
         corr_matrix = df_features.corr()
         iters = range(len(corr_matrix.columns) - 1)
@@ -153,9 +157,13 @@ def load(drop_correlated = True, corr_thr = 0.85, hand="both"):
         df_features.drop(drops, axis=1, inplace=True)
     # end of drop correlated columns implementation
 
+    print(f"df_features.shape: {df_features.shape}")
+
     features = df.loc[:, df_features.columns[0]:df_features.columns[-1]]
     columns = features.columns
     features = features.to_numpy()
+
+    print(f"load: features.shape: {features.shape}")
 
     '''
     Labels are not often consistent across datasets.
@@ -450,8 +458,29 @@ def main(**cfg):
         df_both = df_both.drop(columns=['label_left', 'id_left'])
         df_both = df_both.rename(columns={"label_right":"label", "id_right":"id"})
         df_both["features"] = df_both.apply(concat_features, axis=1)
+
+        # print(f"features_left.shape:{df_both['features_left'].shape}")
+        # print(f"features_right.shape:{df_both['features_right'].shape}")
+        # print(f"features.shape:{df_both['features'].shape}")
+        # print(type(df_both['features']))
+        # print(type(df_both['features_left']))
+        # print(type(df_both['features_right']))
+
+        print(len(df_both.loc[0, "features"]))
+        print(len(df_both.loc[0, "features_left"]))
+        print(len(df_both.loc[0, "features_right"]))
+
+
         
         features = df_both.loc[:, "features"]
+        print(type(features))
+        print(features.shape)
+        print(df_both.columns)
+        print(df_both.head())
+        print(df_both.loc[0, "features"].size)
+        print(df_both.loc[0, "features_left"].size)
+        print(df_both.loc[0, "features_right"].size)
+        print(features[0].size)
         labels = df_both.loc[:, "label"]
         ids = df_both.loc[:, "id"]
 
@@ -470,6 +499,10 @@ def main(**cfg):
 
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
+
+    print(f"len(X_train): {len(X_train)}, len(X_dev): {len(X_dev)}, len(X_test): {len(X_test)}")
+    print(f"Number of positive samples in train set: {sum(y_train)}, dev set: {sum(y_dev)}, test set: {sum(y_test)}")
+    print(f"Number of negative samples in train set: {len(y_train)-sum(y_train)}, dev set: {len(y_dev)-sum(y_dev)}, test set: {len(y_test)-sum(y_test)}")
 
     # scaling 
     used_scaler = None

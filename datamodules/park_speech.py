@@ -1,11 +1,12 @@
+import pandas as pd
 from pathlib import Path
 from typing import Optional
 from torch.utils.data import DataLoader
 from torch_uncertainty.datamodules import TUDataModule
 
-from datasets.park_smile import ParkSmileDataset
+from datasets.park_speech import ParkSpeechDataset
 
-class ParkSmileDataModule(TUDataModule):
+class ParkSpeechDataModule(TUDataModule):
     def __init__(
         self,
         root: str,
@@ -18,16 +19,15 @@ class ParkSmileDataModule(TUDataModule):
         dev_ids_path: Optional[str] = None,
     ):
         super().__init__(root, batch_size, val_split, num_workers, pin_memory, persistent_workers)
-        self.csv_path = Path(root) / "facial_dataset.csv"
-        self.dataset = ParkSmileDataset(csv_path=self.csv_path)
+        self.csv_path = Path(root) / "wavlm_fox_features.csv"
+        self.dataset = ParkSpeechDataset(csv_path=self.csv_path)
 
         self.test_ids = self._load_ids(test_ids_path)
         self.dev_ids = self._load_ids(dev_ids_path)
         self.train_ids = self._load_train_ids()
-        self.train = ParkSmileDataset(csv_path=self.csv_path, ids=self.train_ids)
-        self.val = ParkSmileDataset(csv_path=self.csv_path, ids=self.dev_ids)
-        self.test = ParkSmileDataset(csv_path=self.csv_path, ids=self.test_ids)
-        print(f"all_ids: {self.dataset.ids.size} - test_ids: {self.test.ids.size} - dev_ids: {self.val.ids.size} - train_ids: {self.train.ids.size}")
+        self.train = ParkSpeechDataset(csv_path=self.csv_path, ids=self.train_ids)
+        self.val = ParkSpeechDataset(csv_path=self.csv_path, ids=self.dev_ids)
+        self.test = ParkSpeechDataset(csv_path=self.csv_path, ids=self.test_ids)
 
         self.num_classes = 1
         self.num_features = self.train_dataloader().dataset.features.shape[1]
@@ -37,7 +37,7 @@ class ParkSmileDataModule(TUDataModule):
             with open(path, "r") as f:
                 return set(line.strip() for line in f)
         return None
-    
+
     def _load_train_ids(self):
         all_ids = set(self.dataset.ids)
         return all_ids - self.test_ids - self.dev_ids
@@ -47,10 +47,31 @@ class ParkSmileDataModule(TUDataModule):
         print(f"from setup: num_features: {self.num_features}")
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        return DataLoader(
+            self.train, 
+            batch_size=self.batch_size, 
+            shuffle=True, 
+            num_workers=self.num_workers, 
+            pin_memory=self.pin_memory, 
+            persistent_workers=self.persistent_workers
+        )
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.val, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(
+            self.val, 
+            batch_size=self.batch_size, 
+            shuffle=False, 
+            num_workers=self.num_workers, 
+            pin_memory=self.pin_memory, 
+            persistent_workers=self.persistent_workers
+        )
 
     def test_dataloader(self) -> DataLoader:
-        return DataLoader(self.test, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(
+            self.test, 
+            batch_size=self.batch_size, 
+            shuffle=False, 
+            num_workers=self.num_workers, 
+            pin_memory=self.pin_memory, 
+            persistent_workers=self.persistent_workers
+        )

@@ -167,6 +167,7 @@ def load(drop_correlated = True, corr_thr = 0.85, feature_files=[WAVLM_FEATURES_
 Based on the predefined test split, split the dataframe into train+dev and test sets
 '''
 def train_test_split(features, labels, ids):
+    print(f"train_test_split len(ids): {len(ids)}")
     features_train = []
     labels_train = []
     ids_train = []
@@ -197,6 +198,7 @@ def train_test_split(features, labels, ids):
 Based on the predefined dev split, split the dataframe into train and dev sets
 '''
 def train_dev_split(features, labels, ids):
+    print(f"train_dev_split len(ids): {len(ids)}")
     features_train = []
     labels_train = []
     ids_train = []
@@ -441,6 +443,12 @@ def main(**cfg):
  
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
+
+    print(f"len(X_train): {len(X_train)}, len(X_dev): {len(X_dev)}, len(X_test): {len(X_test)}")
+    print(f"Number of features: {len(columns)}")
+    print(f"Number of positive samples in the training set: {np.sum(y_train)}")
+    print(f"Number of positive samples in the dev set: {np.sum(y_dev)}")
+    print(f"Number of positive samples in the test set: {np.sum(y_test)}")
     
     # scaling
     used_scaler = None

@@ -10,7 +10,7 @@ from models.park_smile import BNN, ShallowBNN, ANN, ShallowANN
 
 
 def optim_dec(model: nn.Module) -> dict:
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=0.005)
+    optimizer = optim.Adam(model.parameters(), lr=0.03265227174722892, weight_decay=0.005)
     exp_lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
     return {"optimizer": optimizer, "lr_scheduler": exp_lr_scheduler}
 
@@ -18,15 +18,10 @@ def optim_dec(model: nn.Module) -> dict:
 root = Path("./data/facial_expression_smile")
 datamodule = ParkSmileDataModule(root=root, num_workers=7, test_ids_path=f'./data/test_set_participants.txt', dev_ids_path="./data/dev_set_participants.txt")
 
-print(f'size of train set: {len(datamodule.train_dataloader().dataset)}')
-print(f'size of val set: {len(datamodule.val_dataloader().dataset)}')
-print(f'size of test set: {len(datamodule.test_dataloader().dataset)}')
+model = ANN(datamodule.num_features, drop_prob=0.4)
+trainer = TUTrainer(accelerator="cpu", enable_progress_bar=True, log_every_n_steps=10, max_epochs=64)
 
-
-model = ShallowANN(datamodule.num_features, drop_prob=0.4)
-trainer = TUTrainer(accelerator="cpu", enable_progress_bar=False, log_every_n_steps=10, max_epochs=2)
-
-loss = DECLoss(reg_weight=1e-2)
+loss = DECLoss(reg_weight=1e-4)
 
 routine = ClassificationRoutine(
     model=model,

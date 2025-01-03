@@ -2,22 +2,32 @@ import torch
 import pandas as pd
 from torch.utils.data import Dataset
 
+def parse_patient_id(name: str):
+    if name.startswith("NIH"):
+        [ID, *_] = name.split("-")
+    elif name.endswith("-quick_brown_fox.mp4"):
+        [*_, ID, _] = name.split("-")
+    elif name.endswith("_quick_brown_fox.mp4"):
+        [_, ID, _, _, _] = name.split("_")
+    else:
+        [*_, ID, _, _, _] = name.split("_")
+    return ID
 
-class ParkSmileDataset(Dataset):
+class ParkSpeechDataset(Dataset):
     def __init__(self, csv_path=None, ids=None, drop_correlated=True, corr_thr=0.85):
-    
         if csv_path is not None:
             self.data = pd.read_csv(csv_path)
 
-            # Fill missing values
-            self.data.fillna(0, inplace=True)
+            self.data = self.data.dropna(subset = self.data.columns.difference(['Filename','Participant_ID', 'gender','age','race']), how='any')
 
             # Extract features
             self.features = self._extract_features(drop_correlated, corr_thr)
 
             # Process labels
-            self.labels = self.data['pd'].apply(lambda x: 0.0 if str(x) in ['no', '0'] else 1.0).to_numpy()
+            self.labels = self.data['pd'].apply(lambda x: 0.0 if str(x) in ['no', '0.0'] else 1.0).to_numpy()
 
+            # Parse patient IDs
+            self.data['ID'] = self.data['Filename'].apply(parse_patient_id)
             self.ids = self.data['ID']
 
             # Filter based on IDs (if provided)
@@ -26,11 +36,13 @@ class ParkSmileDataset(Dataset):
                 self.features = self.features[mask]
                 self.labels = self.labels[mask]
                 self.ids = self.ids[mask]
+          
         else:
-            raise ValueError("csv_path must be provided")
+            raise ValueError("csv_paths must be provided")
 
     def _extract_features(self, drop_correlated, corr_thr):
-        feature_columns = [col for col in self.data.columns if 'smile' in col.lower()]
+        feature_columns = self.data.columns.difference(['Filename','Participant_ID', 'gender','age', 'race', 'pd'])
+
         features = self.data[feature_columns]
 
         if drop_correlated:
@@ -51,3 +63,4 @@ class ParkSmileDataset(Dataset):
 
     def __getitem__(self, index):
         return torch.tensor(self.features[index], dtype=torch.float32), torch.tensor(self.labels[index], dtype=torch.float32)
+

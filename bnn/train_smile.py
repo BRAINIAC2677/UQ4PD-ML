@@ -32,21 +32,15 @@ def optim_bnn(model: nn.Module):
 root = Path("./data/facial_expression_smile")
 datamodule = ParkSmileDataModule(root=root, num_workers=7, test_ids_path=f'./data/test_set_participants.txt', dev_ids_path="./data/dev_set_participants.txt")
 
-print(f'size of train set: {len(datamodule.train_dataloader().dataset)}')
-print(f'size of val set: {len(datamodule.val_dataloader().dataset)}')
-print(f'size of test set: {len(datamodule.test_dataloader().dataset)}')
-
-
-model = ShallowBNN(datamodule.num_features)
-trainer = TUTrainer(accelerator="cpu", enable_progress_bar=False, log_every_n_steps=10, max_epochs=100)
+model = BNN(datamodule.num_features)
+trainer = TUTrainer(accelerator="gpu", enable_progress_bar=True, log_every_n_steps=10, max_epochs=128)
 
 loss = ELBOLoss(
     model=model,
     inner_loss = ReshapeBCEWithLogitsLoss(),
-    kl_weight=1 / 10000,
-    num_samples=3,
+    kl_weight=1 / 1000,
+    num_samples=5,
 )
-
 
 routine = ClassificationRoutine(
     model=model,

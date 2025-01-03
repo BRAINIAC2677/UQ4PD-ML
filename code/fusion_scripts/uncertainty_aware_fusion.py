@@ -11,7 +11,6 @@ import wandb
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import subprocess as sp
 
 from baal.modelwrapper import ModelWrapper

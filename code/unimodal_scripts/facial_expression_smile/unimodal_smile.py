@@ -430,6 +430,10 @@ def main(**cfg):
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
 
+    print(f"len(X_train): {len(X_train)}, len(X_dev): {len(X_dev)}, len(X_test): {len(X_test)}")
+    print(f"Number of features: {len(columns)}")
+ 
+
     # scaling
     used_scaler = None
     if cfg['use_feature_scaling']=='yes':
