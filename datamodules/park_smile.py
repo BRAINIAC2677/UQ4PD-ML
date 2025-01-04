@@ -27,7 +27,6 @@ class ParkSmileDataModule(TUDataModule):
         self.train = ParkSmileDataset(csv_path=self.csv_path, ids=self.train_ids)
         self.val = ParkSmileDataset(csv_path=self.csv_path, ids=self.dev_ids)
         self.test = ParkSmileDataset(csv_path=self.csv_path, ids=self.test_ids)
-        print(f"all_ids: {self.dataset.ids.size} - test_ids: {self.test.ids.size} - dev_ids: {self.val.ids.size} - train_ids: {self.train.ids.size}")
 
         self.num_classes = 1
         self.num_features = self.train_dataloader().dataset.features.shape[1]
@@ -43,8 +42,7 @@ class ParkSmileDataModule(TUDataModule):
         return all_ids - self.test_ids - self.dev_ids
 
     def setup(self, stage: Optional[str] = None):
-        print(f"from setup: train size: {len(self.train)}, val size: {len(self.val)}, test size: {len(self.test)}")
-        print(f"from setup: num_features: {self.num_features}")
+        pass
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(self.train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)

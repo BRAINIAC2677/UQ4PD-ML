@@ -39,21 +39,15 @@ class ParkFingerTappingDataset(Dataset):
             self.labels = self.labels[mask]
             self.ids = self.ids[mask]
 
-        print(f"Number of positive samples: {sum(self.labels)}")
-        print(f"Number of negative samples: {len(self.labels) - sum(self.labels)}")
-        print(type(self.features))
 
     def _extract_data(self, drop_correlated, corr_thr, hand):
         data = self.data.copy()
 
-        print(f"Number of samples before filtering: {len(data)}")
         # Drop missing values
         data = data.dropna(subset = data.columns.difference(['Unnamed: 0','filename','Protocol','Participant_ID','Task',
                 'Duration','FPS','Frame_Height','Frame_Width','gender','age','race',
                 'ethnicity']), how='any')
  
-        print(f"Number of samples after filtering: {len(data)}")
-
         if hand != "both" and hand in ["left", "right"]:
             data = data[data["hand"] == hand]
             features = self._process_features(data, drop_correlated, corr_thr)
@@ -77,9 +71,6 @@ class ParkFingerTappingDataset(Dataset):
         dates_left = left_data["filename"].apply(parse_date)
         id_dates_left = ids_left + "#" + dates_left
 
-        print(f"len(features_right): {features_right.shape}")    
-        print(f"len(features_left): {features_left.shape}")
-
         # Merge left and right data
         df_right = pd.DataFrame({
             "features_right": list(features_right),
@@ -100,14 +91,6 @@ class ParkFingerTappingDataset(Dataset):
         df_both = df_both.rename(columns={"label_right": "label", "id_right": "id"})
         df_both["features"] = df_both.apply(concat_features, axis=1)
 
-        print(f"features_left.shape:{df_both['features_left'].shape}")
-        print(f"features_right.shape:{df_both['features_right'].shape}")
-        print(f"features.shape:{df_both['features'].shape}")
-
-        print(len(df_both.loc[0, "features"]))
-        print(len(df_both.loc[0, "features_left"]))
-        print(len(df_both.loc[0, "features_right"]))
-
         features = df_both.loc[:, "features"]
         labels = df_both.loc[:, "label"]
         ids = df_both.loc[:, "id"]
@@ -115,8 +98,6 @@ class ParkFingerTappingDataset(Dataset):
         features = features.to_numpy()
         labels = labels.to_numpy()
         ids = df_both["id"]
-
-        print(f"features.shape:{len(features[0])}")
 
         return features, labels, ids
 
@@ -126,8 +107,6 @@ class ParkFingerTappingDataset(Dataset):
             "Duration", "FPS", "Frame_Height", "Frame_Width", "gender",
             "age", "race", "ethnicity", "pd", "hand"
         ])
-
-        print(f"df_features.shape: {df_features.shape}")
 
         if drop_correlated:
             corr_matrix = df_features.corr()
@@ -139,12 +118,8 @@ class ParkFingerTappingDataset(Dataset):
                         drop_cols.add(corr_matrix.columns[i + 1])
 
             df_features.drop(columns=drop_cols, inplace=True)
-        print(f"df_features.shape: {df_features.shape}")
 
         features = df_features.to_numpy()
-
-        print(f"load: features.shape: {features.shape}")
-
         return features
 
     def __len__(self):

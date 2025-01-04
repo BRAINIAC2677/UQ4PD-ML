@@ -119,7 +119,6 @@ def load(drop_correlated = True, corr_thr = 0.85, feature_files=[WAVLM_FEATURES_
     '''
     df_features = df.drop(columns=['Filename','Participant_ID', 'gender','age','race','pd'])
  
-    #print(df_features.columns)
  
     '''
     Drop columns (if set true) if it is correlated with another one with PCC>thr
@@ -157,7 +156,6 @@ def load(drop_correlated = True, corr_thr = 0.85, feature_files=[WAVLM_FEATURES_
 
     In this case, the labels seem to be already converted. @Abdel: Check correctness?
     '''
-    # print(df["pd"].unique()) #[1. 0.]
     labels = 1.0*(df["pd"]!=0.0)
     df["id"] = df.Filename.apply(parse_patient_id)
  
@@ -444,12 +442,6 @@ def main(**cfg):
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
 
-    print(f"len(X_train): {len(X_train)}, len(X_dev): {len(X_dev)}, len(X_test): {len(X_test)}")
-    print(f"Number of features: {len(columns)}")
-    print(f"Number of positive samples in the training set: {np.sum(y_train)}")
-    print(f"Number of positive samples in the dev set: {np.sum(y_dev)}")
-    print(f"Number of positive samples in the test set: {np.sum(y_test)}")
-    
     # scaling
     used_scaler = None
     if cfg['use_feature_scaling']=='yes':

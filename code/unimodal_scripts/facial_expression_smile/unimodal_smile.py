@@ -93,7 +93,6 @@ def load(drop_correlated = True, corr_thr = 0.85):
                 break
             
     df_features = df[feature_columns]
-    #print(feature_columns)
 
     '''
     Drop columns (if set true) if it is correlated with another one with PCC>thr
@@ -131,8 +130,6 @@ def load(drop_correlated = True, corr_thr = 0.85):
     Q for Tariq (from Saiful):
     In this case, there are also some 0 labels (not sure exactly why -- are these missing labels?)
     '''
-    #print(df['pd'].unique()) ['no' 'yes' 'Possible' 0 'Probable']
-    #print(df['pd'].apply(lambda x: str(x)).unique()) ['no' 'yes' 'Possible' '0' 'Probable']
     labels = df['pd'].apply(lambda x: 0 if str(x) in ['no','0'] else 1).to_numpy()
     
     '''
@@ -144,7 +141,6 @@ def load(drop_correlated = True, corr_thr = 0.85):
 
     return features, labels, IDs, feature_columns
 
-#print(len(set(test_ids)), len(set(dev_ids)))
 
 '''
 Based on the predefined test split, split the dataframe into train+dev and test sets
@@ -430,10 +426,6 @@ def main(**cfg):
     X_train, X_dev, X_test = features_train, features_dev, features_test
     y_train, y_dev, y_test = labels_train, labels_dev, labels_test
 
-    print(f"len(X_train): {len(X_train)}, len(X_dev): {len(X_dev)}, len(X_test): {len(X_test)}")
-    print(f"Number of features: {len(columns)}")
- 
-
     # scaling
     used_scaler = None
     if cfg['use_feature_scaling']=='yes':
@@ -462,10 +454,6 @@ def main(**cfg):
     dev_loader = DataLoader(dev_dataset, batch_size=cfg["batch_size"])
     test_dataset = TensorDataset(X_test, y_test)
     test_loader = DataLoader(test_dataset, batch_size = cfg['batch_size'])
-
-    print(f'size of train set: {len(train_dataset)}')
-    print(f'size of val set: {len(dev_dataset)}')
-    print(f'size of test set: {len(test_dataset)}')
 
     # model initialization 
     model = None

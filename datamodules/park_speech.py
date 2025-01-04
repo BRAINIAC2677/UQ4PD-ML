@@ -43,8 +43,7 @@ class ParkSpeechDataModule(TUDataModule):
         return all_ids - self.test_ids - self.dev_ids
 
     def setup(self, stage: Optional[str] = None):
-        print(f"from setup: train size: {len(self.train)}, val size: {len(self.val)}, test size: {len(self.test)}")
-        print(f"from setup: num_features: {self.num_features}")
+        pass
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
