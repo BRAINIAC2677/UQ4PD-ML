@@ -25,12 +25,12 @@ def concat_features(row):
     return list(row["features_right"]) + list(row["features_left"])
 
 class ParkFingerTappingDataset(Dataset):
-    def __init__(self, csv_path=None, ids=None, drop_correlated=True, corr_thr=1, hand="both"):
+    def __init__(self, csv_path=None, ids=None, corr_thr=1, hand="both"):
         if csv_path is None:
             raise ValueError("csv_path must be provided")
 
         self.data = pd.read_csv(csv_path)
-        self.features, self.labels, self.ids = self._extract_data(drop_correlated, corr_thr, hand)
+        self.features, self.labels, self.ids = self._extract_data(corr_thr, hand)
 
         # Filter based on IDs (if provided)
         if ids is not None:
@@ -40,7 +40,7 @@ class ParkFingerTappingDataset(Dataset):
             self.ids = self.ids[mask]
 
 
-    def _extract_data(self, drop_correlated, corr_thr, hand):
+    def _extract_data(self, corr_thr, hand):
         data = self.data.copy()
 
         # Drop missing values
@@ -50,7 +50,7 @@ class ParkFingerTappingDataset(Dataset):
  
         if hand != "both" and hand in ["left", "right"]:
             data = data[data["hand"] == hand]
-            features = self._process_features(data, drop_correlated, corr_thr)
+            features = self._process_features(data, corr_thr)
             labels = 1.0 * (data["pd"] != "no").to_numpy()
             ids = data["filename"].apply(parse_patient_id)
             return features, labels, ids
@@ -59,13 +59,13 @@ class ParkFingerTappingDataset(Dataset):
         right_data = data[data["hand"] == "right"]
         left_data = data[data["hand"] == "left"]
 
-        features_right = self._process_features(right_data, drop_correlated, corr_thr)
+        features_right = self._process_features(right_data, corr_thr)
         labels_right = 1.0 * (right_data["pd"] != "no").to_numpy()
         ids_right = right_data["filename"].apply(parse_patient_id)
         dates_right = right_data["filename"].apply(parse_date)
         id_dates_right = ids_right + "#" + dates_right
 
-        features_left = self._process_features(left_data, drop_correlated, corr_thr)
+        features_left = self._process_features(left_data, corr_thr)
         labels_left = 1.0 * (left_data["pd"] != "no").to_numpy()
         ids_left = left_data["filename"].apply(parse_patient_id)
         dates_left = left_data["filename"].apply(parse_date)
@@ -101,23 +101,22 @@ class ParkFingerTappingDataset(Dataset):
 
         return features, labels, ids
 
-    def _process_features(self, data, drop_correlated, corr_thr):
+    def _process_features(self, data, corr_thr):
         df_features = data.drop(columns=[
             "Unnamed: 0", "filename", "Protocol", "Participant_ID", "Task",
             "Duration", "FPS", "Frame_Height", "Frame_Width", "gender",
             "age", "race", "ethnicity", "pd", "hand"
         ])
 
-        if drop_correlated:
-            corr_matrix = df_features.corr()
-            drop_cols = set()
+        corr_matrix = df_features.corr()
+        drop_cols = set()
 
-            for i in range(len(corr_matrix.columns) - 1):
-                for j in range(i + 1):
-                    if abs(corr_matrix.iloc[j, i + 1]) > corr_thr:
-                        drop_cols.add(corr_matrix.columns[i + 1])
+        for i in range(len(corr_matrix.columns) - 1):
+            for j in range(i + 1):
+                if abs(corr_matrix.iloc[j, i + 1]) > corr_thr:
+                    drop_cols.add(corr_matrix.columns[i + 1])
 
-            df_features.drop(columns=drop_cols, inplace=True)
+        df_features.drop(columns=drop_cols, inplace=True)
 
         features = df_features.to_numpy()
         return features

@@ -11,6 +11,7 @@ class ParkFingerTappingDataModule(TUDataModule):
         self,
         root: str,
         scaler=None,
+        corr_thr: float = 1,
         batch_size: int = 32,
         val_split: float = 0.2,
         num_workers: int = 0,
@@ -21,16 +22,16 @@ class ParkFingerTappingDataModule(TUDataModule):
     ):
         super().__init__(root, batch_size, val_split, num_workers, pin_memory, persistent_workers)
         self.csv_path = Path(root) / "features_demography_diagnosis_Nov22_2023.csv"
-        self.dataset = ParkFingerTappingDataset(csv_path=self.csv_path)
+        self.dataset = ParkFingerTappingDataset(csv_path=self.csv_path, corr_thr=corr_thr)
         self.scaler = scaler
 
         self.test_ids = self._load_ids(test_ids_path)
         self.dev_ids = self._load_ids(dev_ids_path)
         self.train_ids = self._load_train_ids()
         
-        self.train = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.train_ids)
-        self.val = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.dev_ids)
-        self.test = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.test_ids)
+        self.train = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.train_ids, corr_thr=corr_thr)
+        self.val = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.dev_ids, corr_thr=corr_thr)
+        self.test = ParkFingerTappingDataset(csv_path=self.csv_path, ids=self.test_ids, corr_thr=corr_thr)
         
         self.num_classes = 1
         self.num_features = len(self.train_dataloader().dataset.features[0])
@@ -53,7 +54,6 @@ class ParkFingerTappingDataModule(TUDataModule):
         else:
             scaler = None
         if scaler:
-            print(type(self.train.features.tolist()))
             self.train.features = scaler.fit_transform(self.train.features.tolist())
             self.val.features = scaler.transform(self.val.features.tolist())
             self.test.features = scaler.transform(self.test.features.tolist())

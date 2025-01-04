@@ -5,7 +5,7 @@ from pathlib import Path
 from torch import nn, optim
 from torch_uncertainty import TUTrainer
 
-from mc_dropout import mc_dropout
+from losses import DECLoss
 from datamodules import ParkFingerTappingDataModule
 from routines import ClassificationRoutine
 from models.park_finger_tapping import ANN, ShallowANN
@@ -30,7 +30,6 @@ def main(args):
     lr = args['lr']
     max_epochs = args['max_epochs']
     drop_prob = args['drop_prob']
-    num_estimators = args['num_estimators']
     corr_thr = args['corr_thr']
     scaler = args['scaler']
     optimizer = args['optimizer']
@@ -38,6 +37,7 @@ def main(args):
     weight_decay = args['weight_decay']
     beta1 = args['beta1']
     beta2 = args['beta2']
+    reg_weight = args['reg_weight']
 
     make_deterministic(seed)
 
@@ -59,7 +59,6 @@ def main(args):
         model = ShallowANN(datamodule.num_features, drop_prob=drop_prob)
     else:
         raise ValueError(f"Unknown model: {model}")
-    mc_model = mc_dropout(model, num_estimators=num_estimators, last_layer=False, on_batch=False)
 
     # Optimizer
     if optimizer == "adamw":
@@ -78,14 +77,15 @@ def main(args):
         )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer}")
+    
+    loss = DECLoss(reg_weight=reg_weight)
 
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
-        model=mc_model,
-        loss=nn.BCEWithLogitsLoss(),
+        model=model,
+        loss=loss,
         optim_recipe=optimizer,
-        is_ensemble=True,
     )
 
     # Trainer
@@ -107,7 +107,6 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=0.0035999151237276687, help="Learning rate")
     parser.add_argument("--max_epochs", type=int, default=85, help="Maximum epochs")
     parser.add_argument("--drop_prob", type=float, default=0.2685957816989365, help="Dropout probability")
-    parser.add_argument("--num_estimators", type=int, default=200, help="Number of estimators for MC Dropout")
     parser.add_argument("--corr_thr", type=float, default=0.8767490159878473, help="Correlation threshold for data")
     parser.add_argument("--scaler", type=str, default="minmax", choices=["standard", "minmax"], help="Scaler type")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
@@ -115,6 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.07045409391333798, help="Weight decay")
     parser.add_argument("--beta1", type=float, default=0.850924309225251, help="Beta1 for AdamW")
     parser.add_argument("--beta2", type=float, default=0.9966252622508455, help="Beta2 for AdamW")
+    parser.add_argument("--reg_weight", type=float, default=1e-4, help="Regularization weight")
 
     args = parser.parse_args()
     args = vars(args)
