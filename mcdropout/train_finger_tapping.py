@@ -90,7 +90,7 @@ def main(args):
 
     # Trainer
     trainer = TUTrainer(
-        accelerator="cpu", max_epochs= max_epochs, enable_progress_bar=False, log_every_n_steps=10
+        accelerator="gpu", max_epochs= max_epochs, enable_progress_bar=False, log_every_n_steps=10
     )
 
     # Train and evaluate

@@ -10,7 +10,7 @@ class ParkFingerTappingDataModule(TUDataModule):
     def __init__(
         self,
         root: str,
-        scaler=None,
+        scaler : str | None = None,
         corr_thr: float = 1,
         batch_size: int = 32,
         val_split: float = 0.2,

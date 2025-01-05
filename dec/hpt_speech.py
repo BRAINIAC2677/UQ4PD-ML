@@ -1,6 +1,6 @@
 import optuna
 import argparse
-from dec.train_finger_tapping import main
+from dec.train_speech import main
 
 
 def objective(trial):
@@ -49,7 +49,7 @@ def main_hpt(n_trials: int, log_file: str):
     study.optimize(objective, n_trials=n_trials)  # Adjust the number of trials as needed
 
     with open(log_file, "a") as f:
-        f.write(f"Dataset: finger_tapping | Method: dec\n")
+        f.write(f"Dataset: speech | Method: dec\n")
         f.write(f"Best hyperparameters: {study.best_params}\n")
         f.write(f"Best value: {study.best_value}\n\n")
 
@@ -58,9 +58,9 @@ def main_hpt(n_trials: int, log_file: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Hyperparameter tuning for deep evidential classification on finger-tapping dataset")
+    parser = argparse.ArgumentParser(description="Hyperparameter tuning for deep evidential classification on speech dataset")
     parser.add_argument("--n_trials", type=int, default=100, help="Number of trials for Optuna") 
-    parser.add_argument("--log_file", type=str, default="hpt_finger_tapping.log", help="Log file to save the results")
+    parser.add_argument("--log_file", type=str, default="hpt_speech.log", help="Log file to save the results")
 
     args = parser.parse_args()
     args = vars(args)

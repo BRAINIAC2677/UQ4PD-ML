@@ -1,4 +1,5 @@
 import optuna
+import argparse
 from bnn.train_finger_tapping import main
 
 
@@ -42,14 +43,25 @@ def objective(trial):
     return results[0]["test/cls/Acc"]  # Adjust based on your actual evaluation metric
 
 
-def main_hpt():
+def main_hpt(n_trials: int, log_file: str):
     """Run Optuna hyperparameter tuning."""
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=20)  # Adjust the number of trials as needed
+    study.optimize(objective, n_trials=n_trials)  # Adjust the number of trials as needed
+
+    with open(log_file, "a") as f:
+        f.write(f"Dataset: finger_tapping | Method: bnn\n")
+        f.write(f"Best hyperparameters: {study.best_params}\n")
+        f.write(f"Best value: {study.best_value}\n\n")
 
     print("Best hyperparameters:", study.best_params)
-    print("Best Accuracy:", study.best_value)
+    print("Best value:", study.best_value)
 
 
 if __name__ == "__main__":
-    main_hpt()
+    parser = argparse.ArgumentParser(description="Hyperparameter tuning for BNNs on Finger Tapping dataset")
+    parser.add_argument("--n_trials", type=int, default=100, help="Number of trials for Optuna") 
+    parser.add_argument("--log_file", type=str, default="hpt_finger_tapping.log", help="Log file to save results")
+
+    args = parser.parse_args()
+    args = vars(args)
+    main_hpt(**args)
