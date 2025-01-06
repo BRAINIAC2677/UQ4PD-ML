@@ -101,7 +101,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model on Finger Tapping Data")
+    parser = argparse.ArgumentParser(description="Train a mcdropout model on finger_tapping data")
     parser.add_argument("--model", type=str, default="shallow_ann", choices=["ann", "shallow_ann"], help="Model type")
     parser.add_argument("--seed", type=int, default=604, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.0035999151237276687, help="Learning rate")

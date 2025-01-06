@@ -99,25 +99,26 @@ def main(args):
 
     return results
 
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model on Finger Tapping Data")
-    parser.add_argument("--model", type=str, default="shallow_ann", choices=["ann", "shallow_ann"], help="Model type")
-    parser.add_argument("--seed", type=int, default=604, help="Random seed")
-    parser.add_argument("--lr", type=float, default=0.0035999151237276687, help="Learning rate")
-    parser.add_argument("--max_epochs", type=int, default=85, help="Maximum epochs")
-    parser.add_argument("--drop_prob", type=float, default=0.2685957816989365, help="Dropout probability")
-    parser.add_argument("--num_estimators", type=int, default=200, help="Number of estimators for MC Dropout")
-    parser.add_argument("--corr_thr", type=float, default=0.8767490159878473, help="Correlation threshold for data")
-    parser.add_argument("--scaler", type=str, default="minmax", choices=["standard", "minmax"], help="Scaler type")
+    parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
+    parser.add_argument("--model", type=str, default="ann", choices=["ann", "shallow_ann"], help="Model type")
+    parser.add_argument("--seed", type=int, default=914, help="Random seed")
+    parser.add_argument("--lr", type=float, default=0.005636638313326733, help="Learning rate")
+    parser.add_argument("--max_epochs", type=int, default=53, help="Maximum epochs")
+    parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
+    parser.add_argument("--num_estimators", type=int, default=700, help="Number of estimators for MC Dropout")
+    parser.add_argument("--corr_thr", type=float, default=0.9446033986181408, help="Correlation threshold for data")
+    parser.add_argument("--scaler", type=str, default="standard", choices=["standard", "minmax"], help="Scaler type")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
-    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD")
-    parser.add_argument("--weight_decay", type=float, default=0.07045409391333798, help="Weight decay")
-    parser.add_argument("--beta1", type=float, default=0.850924309225251, help="Beta1 for AdamW")
-    parser.add_argument("--beta2", type=float, default=0.9966252622508455, help="Beta2 for AdamW")
+    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")
+    parser.add_argument("--weight_decay", type=float, default=0.0631540840367034, help="Weight decay")
+    parser.add_argument("--beta1", type=float, default=0.843677246295737, help="Beta1 for AdamW")
+    parser.add_argument("--beta2", type=float, default=0.9202703944120154, help="Beta2 for AdamW")
 
     args = parser.parse_args()
     args = vars(args)
+
     results = main(args)
     print(results)
+
 

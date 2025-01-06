@@ -1,6 +1,6 @@
 #!/bin/bash
 
-N_TRIALS=1
+N_TRIALS=100
 LOG_FILE="hpt_${N_TRIALS}_trials.log"
 DATASETS=("smile" "speech" "finger_tapping")
 METHODS=("mcdropout" "bnn" "dec")
