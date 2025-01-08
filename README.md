@@ -1,5 +1,9 @@
 # UQParkNet | `U`ncertainty `Q`uantified `Park`inson `Net`work
 
+
+## Datasets
+- [UsPark](/data/)
+
 ## Insights
 - In all three unimodal models, the BNN variants have more or less same accuracy as their inference time mc-dropout counterpart.
 - However, the BNN variant of fusion network drops accuracy by almost 0.08 both on BNN, inference time mc-dropout unimodal models.

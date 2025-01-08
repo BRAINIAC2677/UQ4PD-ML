@@ -388,7 +388,7 @@ class ClassificationRoutine(LightningModule):
 
     def training_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> STEP_OUTPUT:
         batch = self._apply_mixup(batch)
-        inputs, target = self.format_batch_fn(batch)
+        inputs, target, _ = self.format_batch_fn(batch)
 
         if self.is_elbo:
             loss = self.loss(inputs, target)
@@ -409,7 +409,17 @@ class ClassificationRoutine(LightningModule):
         return loss
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
-        inputs, targets = batch
+        # print(f"type batch: {type(batch)}")
+        # print(f"len batch: {len(batch)}")   
+        # print(f"type batch[0]: {type(batch[0])}")
+        # print(f"shape batch[0]: {batch[0].shape}")
+        # print(f"type batch[1]: {type(batch[1])}")
+        # print(f"shape batch[1]: {batch[1].shape}")
+        # print(f"type batch[2]: {type(batch[2])}")
+        # print(f"len batch[2]: {len(batch[2])}")
+        # print(f"shape batch[2]: {batch[2].shape}")
+
+        inputs, targets, _ = batch
         logits = self.forward(inputs, save_feats=self.eval_grouping_loss)
         logits = rearrange(logits, "(m b) c -> b m c", b=targets.size(0))
 
@@ -430,7 +440,7 @@ class ClassificationRoutine(LightningModule):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        inputs, targets = batch
+        inputs, targets, _ = batch
         logits = self.forward(inputs, save_feats=self.eval_grouping_loss)
         logits = rearrange(logits, "(n b) c -> b n c", b=targets.size(0))
         probs_per_est = torch.sigmoid(logits) if self.binary_cls else F.softmax(logits, dim=-1)

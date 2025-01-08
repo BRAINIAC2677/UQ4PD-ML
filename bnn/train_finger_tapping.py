@@ -53,14 +53,14 @@ def main(args):
     make_deterministic(seed)
 
     # Data preparation
-    root = Path("./data/finger_tapping")
+    root = Path("./data/uspark/finger_tapping")
     datamodule = ParkFingerTappingDataModule(
         root=root,
         num_workers=7,
         scaler=scaler,
         corr_thr=corr_thr,
-        test_ids_path="./data/test_set_participants.txt",
-        dev_ids_path="./data/dev_set_participants.txt",
+        test_ids_path="./data/uspark/test_set_participants.txt",
+        dev_ids_path="./data/uspark/dev_set_participants.txt",
     )
 
     # Model definition

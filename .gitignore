@@ -2,6 +2,7 @@
 /saved_models/*
 /uqparknet/*
 /lightning_logs/*
+/data/chaoyang/*
 
 # Compiled source #
 ###################

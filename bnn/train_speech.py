@@ -53,14 +53,14 @@ def main(args):
     make_deterministic(seed)
 
     # Data preparation
-    root = Path("./data/quick_brown_fox")
+    root = Path("./data/uspark/quick_brown_fox")
     datamodule = ParkSpeechDataModule(
         root=root,
         num_workers=7,
         scaler=scaler,
         corr_thr=corr_thr,
-        test_ids_path="./data/test_set_participants.txt",
-        dev_ids_path="./data/dev_set_participants.txt",
+        test_ids_path="./data/uspark/test_set_participants.txt",
+        dev_ids_path="./data/uspark/dev_set_participants.txt",
     )
 
     # Model definition

@@ -42,14 +42,14 @@ def main(args):
     make_deterministic(seed)
 
     # Data preparation
-    root = Path("./data/facial_expression_smile")
+    root = Path("./data/uspark/facial_expression_smile")
     datamodule = ParkSmileDataModule(
         root=root,
         num_workers=7,
         scaler=scaler,
         corr_thr=corr_thr,
-        test_ids_path="./data/test_set_participants.txt",
-        dev_ids_path="./data/dev_set_participants.txt",
+        test_ids_path="./data/uspark/test_set_participants.txt",
+        dev_ids_path="./data/uspark/dev_set_participants.txt",
     )
 
     # Model definition
