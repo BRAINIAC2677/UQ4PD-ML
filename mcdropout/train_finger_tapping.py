@@ -7,7 +7,7 @@ from torch_uncertainty import TUTrainer
 
 from mc_dropout import mc_dropout
 from datamodules import ParkFingerTappingDataModule
-from routines import ClassificationRoutine
+from routines.uspark import ClassificationRoutine
 from models.park_finger_tapping import ANN, ShallowANN
 
 

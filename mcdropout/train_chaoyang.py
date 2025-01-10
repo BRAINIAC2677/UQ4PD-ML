@@ -8,7 +8,7 @@ from torch_uncertainty.models.resnet import resnet
 
 from mc_dropout import mc_dropout
 from datamodules import ChaoyangDataModule
-from routines import ClassificationRoutine
+from routines.chaoyang import ClassificationRoutine
 
 
 def make_deterministic(seed: int):
