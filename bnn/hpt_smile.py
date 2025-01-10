@@ -37,14 +37,14 @@ def objective(trial):
     }
 
     # Call the main training function with the trial's hyperparameters
-    results = main(args)
+    val_results, test_results = main(args)
 
     # Return the metric to minimize (or maximize)
-    return results[0]["test/cal/ECE"]  # Adjust based on your actual evaluation metric
+    return val_results[0]["val/cls/AUROC"]  # Adjust based on your actual evaluation metric
 
 def main_hpt(n_trials: int, log_file: str):
     """Run Optuna hyperparameter tuning."""
-    study = optuna.create_study(direction="minimize")
+    study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials)  # Adjust the number of trials as needed
 
     with open(log_file, "a") as f:

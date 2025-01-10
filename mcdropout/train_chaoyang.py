@@ -91,10 +91,10 @@ def main(args):
 
     # Train and evaluate
     trainer.fit(model=routine, datamodule=datamodule)
-    results = trainer.test(model=routine, datamodule=datamodule)
+    test_results = trainer.test(model=routine, datamodule=datamodule)
+    val_results = trainer.validate(model=routine, datamodule=datamodule)
 
-    return results
-
+    return (val_results, test_results)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
     parser.add_argument("--model", type=str, default="resnet", choices=["resnet"], help="Model type")
@@ -112,7 +112,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args = vars(args)
 
-    results = main(args)
-    print(results)
-
+    val_results, test_results = main(args)
+    
 
