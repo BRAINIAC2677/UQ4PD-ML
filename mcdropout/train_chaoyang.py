@@ -8,7 +8,7 @@ from torch_uncertainty.models.resnet import resnet
 
 from mc_dropout import mc_dropout
 from datamodules import ChaoyangDataModule
-from routines.chaoyang import ClassificationRoutine
+from routines import ClassificationRoutine
 
 
 def make_deterministic(seed: int):
@@ -47,6 +47,7 @@ def main(args):
     )
 
     print(f"len(train): {len(datamodule.train)}")
+    print(f"len(val): {len(datamodule.val)}")
     print(f"len(test): {len(datamodule.test)}")
 
     # Model definition

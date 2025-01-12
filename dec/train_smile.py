@@ -7,7 +7,7 @@ from torch_uncertainty import TUTrainer
 
 from losses import DECLoss
 from datamodules import ParkSmileDataModule
-from routines.uspark import ClassificationRoutine
+from routines import ClassificationRoutine
 from models.park_finger_tapping import ANN, ShallowANN
 
 

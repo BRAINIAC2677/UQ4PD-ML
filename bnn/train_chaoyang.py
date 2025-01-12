@@ -7,7 +7,7 @@ from torch_uncertainty import TUTrainer
 from torch_uncertainty.losses import ELBOLoss
 
 from datamodules import ChaoyangDataModule
-from routines.chaoyang import ClassificationRoutine
+from routines import ClassificationRoutine
 from models.resnet_bnn import resnet
 
 

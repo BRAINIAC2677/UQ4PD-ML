@@ -7,7 +7,7 @@ from torch_uncertainty import TUTrainer
 from torch_uncertainty.losses import ELBOLoss
 
 from datamodules import ParkFingerTappingDataModule
-from routines.uspark import ClassificationRoutine
+from routines import ClassificationRoutine
 from models.park_finger_tapping import BNN, ShallowBNN
 
 

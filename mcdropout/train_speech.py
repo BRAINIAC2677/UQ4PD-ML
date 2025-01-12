@@ -7,7 +7,7 @@ from torch_uncertainty import TUTrainer
 
 from mc_dropout import mc_dropout
 from datamodules import ParkSpeechDataModule
-from routines.uspark import ClassificationRoutine
+from routines import ClassificationRoutine
 from models.park_smile import ANN, ShallowANN
 
 

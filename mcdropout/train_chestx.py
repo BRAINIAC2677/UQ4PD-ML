@@ -4,11 +4,11 @@ import numpy as np
 from pathlib import Path
 from torch import nn, optim
 from torch_uncertainty import TUTrainer
+from torch_uncertainty.models.resnet import resnet
 
-from losses import DECLoss
-from datamodules import ParkSpeechDataModule
+from mc_dropout import mc_dropout
+from datamodules import ChestXDataModule
 from routines import ClassificationRoutine
-from models.park_finger_tapping import ANN, ShallowANN
 
 
 def make_deterministic(seed: int):
@@ -30,35 +30,33 @@ def main(args):
     lr = args['lr']
     max_epochs = args['max_epochs']
     drop_prob = args['drop_prob']
-    corr_thr = args['corr_thr']
-    scaler = args['scaler']
+    num_estimators = args['num_estimators']
     optimizer = args['optimizer']
     momentum = args['momentum']
     weight_decay = args['weight_decay']
     beta1 = args['beta1']
     beta2 = args['beta2']
-    reg_weight = args['reg_weight']
 
     make_deterministic(seed)
 
     # Data preparation
-    root = Path("./data/uspark/quick_brown_fox")
-    datamodule = ParkSpeechDataModule(
+    root = Path("./data/pneumonia-chest-xray")
+    datamodule = ChestXDataModule(
         root=root,
         num_workers=7,
-        scaler=scaler,
-        corr_thr=corr_thr,
-        test_ids_path="./data/uspark/test_set_participants.txt",
-        dev_ids_path="./data/uspark/dev_set_participants.txt",
     )
 
+    print(f"len(train): {len(datamodule.train)}")
+    print(f"len(val): {len(datamodule.val)}")
+    print(f"len(test): {len(datamodule.test)}")
+
     # Model definition
-    if model == "ann":
-        model = ANN(datamodule.num_features, drop_prob=drop_prob)
-    elif model == "shallow_ann":
-        model = ShallowANN(datamodule.num_features, drop_prob=drop_prob)
+    if model == "resnet":
+        model = resnet(arch=34, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
     else:
         raise ValueError(f"Unknown model: {model}")
+
+    mc_model = mc_dropout(model, num_estimators=num_estimators, last_layer=False, on_batch=False)
 
     # Optimizer
     if optimizer == "adamw":
@@ -77,20 +75,19 @@ def main(args):
         )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer}")
-    
-    loss = DECLoss(reg_weight=reg_weight)
 
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
-        model=model,
-        loss=loss,
+        model=mc_model,
+        loss=nn.CrossEntropyLoss(),
         optim_recipe=optimizer,
+        is_ensemble=True,
     )
 
     # Trainer
     trainer = TUTrainer(
-        accelerator="gpu", max_epochs= max_epochs, enable_progress_bar=False, log_every_n_steps=10
+        accelerator="gpu", max_epochs= max_epochs, enable_progress_bar=True, log_every_n_steps=10
     )
 
     # Train and evaluate
@@ -99,24 +96,23 @@ def main(args):
     val_results = trainer.validate(model=routine, datamodule=datamodule)
 
     return (val_results, test_results)
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a dec  model on speech data")
-    parser.add_argument("--model", type=str, default="shallow_ann", choices=["ann", "shallow_ann"], help="Model type")
-    parser.add_argument("--seed", type=int, default=604, help="Random seed")
-    parser.add_argument("--lr", type=float, default=0.0035999151237276687, help="Learning rate")
-    parser.add_argument("--max_epochs", type=int, default=85, help="Maximum epochs")
-    parser.add_argument("--drop_prob", type=float, default=0.2685957816989365, help="Dropout probability")
-    parser.add_argument("--corr_thr", type=float, default=0.8767490159878473, help="Correlation threshold for data")
-    parser.add_argument("--scaler", type=str, default="minmax", choices=["standard", "minmax"], help="Scaler type")
+    parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
+    parser.add_argument("--model", type=str, default="resnet", choices=["resnet"], help="Model type")
+    parser.add_argument("--seed", type=int, default=914, help="Random seed")
+    parser.add_argument("--lr", type=float, default=0.005636638313326733, help="Learning rate")
+    parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
+    parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
+    parser.add_argument("--num_estimators", type=int, default=700, help="Number of estimators for MC Dropout")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
-    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD")
-    parser.add_argument("--weight_decay", type=float, default=0.07045409391333798, help="Weight decay")
-    parser.add_argument("--beta1", type=float, default=0.850924309225251, help="Beta1 for AdamW")
-    parser.add_argument("--beta2", type=float, default=0.9966252622508455, help="Beta2 for AdamW")
-    parser.add_argument("--reg_weight", type=float, default=1e-4, help="Regularization weight")
+    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")
+    parser.add_argument("--weight_decay", type=float, default=0.0631540840367034, help="Weight decay")
+    parser.add_argument("--beta1", type=float, default=0.843677246295737, help="Beta1 for AdamW")
+    parser.add_argument("--beta2", type=float, default=0.9202703944120154, help="Beta2 for AdamW")
 
     args = parser.parse_args()
     args = vars(args)
+
     val_results, test_results = main(args)
     
+
