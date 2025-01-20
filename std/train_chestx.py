@@ -6,7 +6,6 @@ from torch import nn, optim
 from torch_uncertainty import TUTrainer
 from torch_uncertainty.models.resnet import resnet
 
-from mc_dropout import mc_dropout
 from datamodules import ChestXDataModule
 from routines import ClassificationRoutine
 
@@ -26,11 +25,11 @@ def main(args):
     """Main training function."""
 
     model = args['model']
+    batch_size = args['batch_size']
     seed = args['seed']
     lr = args['lr']
     max_epochs = args['max_epochs']
     drop_prob = args['drop_prob']
-    num_estimators = args['num_estimators']
     optimizer = args['optimizer']
     momentum = args['momentum']
     weight_decay = args['weight_decay']
@@ -43,6 +42,7 @@ def main(args):
     root = Path("./data/pneumonia-chest-xray")
     datamodule = ChestXDataModule(
         root=root,
+        batch_size=batch_size,
         num_workers=7,
     )
 
@@ -63,8 +63,6 @@ def main(args):
         model = resnet(arch=34, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
     else:
         raise ValueError(f"Unknown model: {model}")
-
-    mc_model = mc_dropout(model, num_estimators=num_estimators, last_layer=False, on_batch=False)
 
     # Optimizer
     if optimizer == "adamw":
@@ -87,7 +85,7 @@ def main(args):
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
-        model=mc_model,
+        model=model,
         loss=nn.CrossEntropyLoss(),
         optim_recipe=optimizer,
         is_ensemble=True,
@@ -107,11 +105,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
     parser.add_argument("--model", type=str, default="resnet", choices=["resnet"], help="Model type")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--seed", type=int, default=914, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.005636638313326733, help="Learning rate")
-    parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
+    parser.add_argument("--max_epochs", type=int, default=5, help="Maximum epochs")
     parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
-    parser.add_argument("--num_estimators", type=int, default=100, help="Number of estimators for MC Dropout")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")
     parser.add_argument("--weight_decay", type=float, default=0.0631540840367034, help="Weight decay")

@@ -1,5 +1,4 @@
 import os
-import json
 from typing import Optional
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -7,11 +6,12 @@ from torch_uncertainty.datamodules import TUDataModule
 
 from datasets.chestx import ChestXDataset
 
+
 class ChestXDataModule(TUDataModule):
     def __init__(
         self,
         root: str,
-        batch_size: int = 1,
+        batch_size: int = 8,
         num_workers: int = 0,
         pin_memory: bool = False,
         persistent_workers: bool = False,
@@ -23,12 +23,18 @@ class ChestXDataModule(TUDataModule):
         val_root = os.path.join(self.root, 'val')
         test_root = os.path.join(self.root, 'test')
 
-        self.train = ChestXDataset(root=train_root, transform=transforms.Compose([transforms.RandomHorizontalFlip(), transforms.Resize((256, 256)), transforms.ToTensor()]))
-        self.val = ChestXDataset(root=val_root, transform=transforms.Compose([transforms.Resize((256, 256)), transforms.ToTensor()]))
-        self.test = ChestXDataset(root=test_root, transform=transforms.Compose([transforms.Resize((256, 256)), transforms.ToTensor()]))
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        self.train = ChestXDataset(root=train_root, transform=transform, balance=True)
+        self.val = ChestXDataset(root=val_root, transform=transform, balance=False)
+        self.test = ChestXDataset(root=test_root, transform=transform, balance=False)
 
         self.num_classes = self.train.nb_classes
-        self.num_channels = 1
+        self.num_channels = 3
 
     def setup(self, stage: Optional[str] = None):
         pass
