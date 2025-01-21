@@ -6,6 +6,7 @@ from torch import nn, optim
 from torch_uncertainty import TUTrainer
 from torch_uncertainty.models.resnet import resnet
 
+from mc_dropout import mc_dropout
 from datamodules import ChestXDataModule
 from routines import ClassificationRoutine
 
@@ -25,10 +26,11 @@ def main(args):
     """Main training function."""
 
     model = args['model']
-    batch_size = args['batch_size']
+    arch = args['arch']
     seed = args['seed']
     lr = args['lr']
     max_epochs = args['max_epochs']
+    batch_size = args['batch_size']
     drop_prob = args['drop_prob']
     optimizer = args['optimizer']
     momentum = args['momentum']
@@ -60,7 +62,7 @@ def main(args):
 
     # Model definition
     if model == "resnet":
-        model = resnet(arch=34, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
+        model = resnet(arch=arch, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
     else:
         raise ValueError(f"Unknown model: {model}")
 
@@ -81,13 +83,15 @@ def main(args):
         )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer}")
+    
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=lr/1000)
 
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
         model=model,
         loss=nn.CrossEntropyLoss(),
-        optim_recipe=optimizer,
+        optim_recipe={"optimizer": optimizer, "lr_scheduler": scheduler},
         is_ensemble=True,
     )
 
@@ -105,10 +109,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
     parser.add_argument("--model", type=str, default="resnet", choices=["resnet"], help="Model type")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--arch", type=int, default=34, choices=[18, 20, 34, 44, 56, 101, 110, 152, 1202], help="ResNet architecture")
     parser.add_argument("--seed", type=int, default=914, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.005636638313326733, help="Learning rate")
-    parser.add_argument("--max_epochs", type=int, default=5, help="Maximum epochs")
+    parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")

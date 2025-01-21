@@ -37,7 +37,7 @@ def objective(trial):
     }
 
     # Call the main training function with the trial's hyperparameters
-    val_results, test_val_results, test_results = main(args)
+    val_results, test_results = main(args)
 
     # Return the metric to minimize (or maximize)
     return val_results[0]["val/cls/AUROC"]  # Adjust based on your actual evaluation metric

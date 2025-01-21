@@ -6,7 +6,8 @@ from torch import nn, optim
 from torch_uncertainty import TUTrainer
 from torch_uncertainty.models.resnet import resnet
 
-from mc_dropout import mc_dropout
+# from losses import DECLoss
+from torch_uncertainty.losses import DECLoss
 from datamodules import ChestXDataModule
 from routines import ClassificationRoutine
 
@@ -32,12 +33,12 @@ def main(args):
     max_epochs = args['max_epochs']
     batch_size = args['batch_size']
     drop_prob = args['drop_prob']
-    num_estimators = args['num_estimators']
     optimizer = args['optimizer']
     momentum = args['momentum']
     weight_decay = args['weight_decay']
     beta1 = args['beta1']
     beta2 = args['beta2']
+    reg_weight = args['reg_weight']
 
     make_deterministic(seed)
 
@@ -67,8 +68,6 @@ def main(args):
     else:
         raise ValueError(f"Unknown model: {model}")
 
-    mc_model = mc_dropout(model, num_estimators=num_estimators, last_layer=False, on_batch=False)
-
     # Optimizer
     if optimizer == "adamw":
         optimizer = optim.AdamW(
@@ -88,12 +87,13 @@ def main(args):
         raise ValueError(f"Unknown optimizer: {optimizer}")
     
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=lr/1000)
+    loss = DECLoss(reg_weight=reg_weight)
 
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
-        model=mc_model,
-        loss=nn.CrossEntropyLoss(),
+        model=model,
+        loss=loss,
         optim_recipe={"optimizer": optimizer, "lr_scheduler": scheduler},
         is_ensemble=True,
     )
@@ -118,12 +118,12 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
-    parser.add_argument("--num_estimators", type=int, default=100, help="Number of estimators for MC Dropout")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")
     parser.add_argument("--weight_decay", type=float, default=0.0631540840367034, help="Weight decay")
     parser.add_argument("--beta1", type=float, default=0.843677246295737, help="Beta1 for AdamW")
     parser.add_argument("--beta2", type=float, default=0.9202703944120154, help="Beta2 for AdamW")
+    parser.add_argument("--reg_weight", type=float, default=1e-4, help="Regularization weight")
 
     args = parser.parse_args()
     args = vars(args)

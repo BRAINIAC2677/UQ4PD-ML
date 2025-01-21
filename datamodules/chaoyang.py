@@ -20,32 +20,20 @@ class ChaoyangDataModule(TUDataModule):
         super().__init__(root, batch_size, val_split, num_workers, pin_memory, persistent_workers)
         self.root = root
 
-        self.split(val_split)
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
-        self.train = ChaoyangDataset(root=self.root, json_name="temp_train.json", transform=transforms.Compose([transforms.RandomHorizontalFlip(), transforms.Resize((256, 256)), transforms.ToTensor()]))
-        self.val = ChaoyangDataset(root=self.root, json_name="temp_val.json", transform=transforms.Compose([transforms.Resize((256, 256)), transforms.ToTensor()]))
-        self.test = ChaoyangDataset(root=self.root, json_name="test.json", transform=transforms.Compose([transforms.Resize((256, 256)), transforms.ToTensor()]))
+        self.train = ChaoyangDataset(root=self.root, json_name="train.json", transform=transform, balance=True)
+        self.val = ChaoyangDataset(root=self.root, json_name="val.json", transform=transform, balance=False)
+        self.test = ChaoyangDataset(root=self.root, json_name="test.json", transform=transform, balance=False)
 
-        self.clean_split()
 
         self.num_classes = self.train.nb_classes
         self.num_channels = 3
     
-    def split(self, val_split: float):
-        with open(os.path.join(self.root, "train.json"), 'r') as f:
-            load_list = json.load(f)
-            train_list = load_list[:int(len(load_list)*(1-val_split))]
-            val_list = load_list[int(len(load_list)*(1-val_split)):]
-        with open(os.path.join(self.root, "temp_train.json"), 'w') as f:
-            json.dump(train_list, f)
-        with open(os.path.join(self.root, "temp_val.json"), 'w') as f:
-            json.dump(val_list, f)
-        
-    
-    def clean_split(self):
-        os.remove(os.path.join(self.root, "temp_train.json"))
-        os.remove(os.path.join(self.root, "temp_val.json"))
-
 
     def setup(self, stage: Optional[str] = None):
         pass

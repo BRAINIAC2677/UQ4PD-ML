@@ -5,10 +5,12 @@ from pathlib import Path
 from torch import nn, optim
 from torch_uncertainty import TUTrainer
 from torch_uncertainty.models.resnet import resnet
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from mc_dropout import mc_dropout
-from datamodules import ChestXDataModule
+from datamodules import ChaoyangDataModule
 from routines import ClassificationRoutine
+
 
 
 def make_deterministic(seed: int):
@@ -32,7 +34,6 @@ def main(args):
     max_epochs = args['max_epochs']
     batch_size = args['batch_size']
     drop_prob = args['drop_prob']
-    num_estimators = args['num_estimators']
     optimizer = args['optimizer']
     momentum = args['momentum']
     weight_decay = args['weight_decay']
@@ -42,24 +43,33 @@ def main(args):
     make_deterministic(seed)
 
     # Data preparation
-    root = Path("./data/pneumonia-chest-xray")
-    datamodule = ChestXDataModule(
+    root = Path("./data/chaoyang")
+    datamodule = ChaoyangDataModule(
         root=root,
         batch_size=batch_size,
         num_workers=7,
     )
 
     print(f"len(train): {len(datamodule.train)}")
-    print(f"train normal: {len([x for x in datamodule.train.data if x[1] == 0])}")
-    print(f"train pneumonia: {len([x for x in datamodule.train.data if x[1] == 1])}")
+    print(f"train class 0 : {len([x for x in datamodule.train.data if x[1] == 0])}")
+    print(f"train class 1 : {len([x for x in datamodule.train.data if x[1] == 1])}")
+    print(f"train class 2 : {len([x for x in datamodule.train.data if x[1] == 2])}")
+    print(f"train class 3 : {len([x for x in datamodule.train.data if x[1] == 3])}")
 
     print(f"len(val): {len(datamodule.val)}")
-    print(f"val normal: {len([x for x in datamodule.val.data if x[1] == 0])}")
-    print(f"val pneumonia: {len([x for x in datamodule.val.data if x[1] == 1])}")
+    print(f"train class 0 : {len([x for x in datamodule.val.data if x[1] == 0])}")
+    print(f"train class 1 : {len([x for x in datamodule.val.data if x[1] == 1])}")
+    print(f"train class 2 : {len([x for x in datamodule.val.data if x[1] == 2])}")
+    print(f"train class 3 : {len([x for x in datamodule.val.data if x[1] == 3])}")
+
 
     print(f"len(test): {len(datamodule.test)}")
-    print(f"test normal: {len([x for x in datamodule.test.data if x[1] == 0])}")
-    print(f"test pneumonia: {len([x for x in datamodule.test.data if x[1] == 1])}")
+    print(f"train class 0 : {len([x for x in datamodule.test.data if x[1] == 0])}")
+    print(f"train class 1 : {len([x for x in datamodule.test.data if x[1] == 1])}")
+    print(f"train class 2 : {len([x for x in datamodule.test.data if x[1] == 2])}")
+    print(f"train class 3 : {len([x for x in datamodule.test.data if x[1] == 3])}")
+
+
 
     # Model definition
     if model == "resnet":
@@ -67,7 +77,6 @@ def main(args):
     else:
         raise ValueError(f"Unknown model: {model}")
 
-    mc_model = mc_dropout(model, num_estimators=num_estimators, last_layer=False, on_batch=False)
 
     # Optimizer
     if optimizer == "adamw":
@@ -86,13 +95,16 @@ def main(args):
         )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer}")
-    
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=lr/1000)
+
+    warmup_epochs = 20
+    warmup_scheduler = LinearLR(optimizer, start_factor=1e-4 / 0.1, total_iters=warmup_epochs)
+    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=max_epochs-warmup_epochs, eta_min=5e-6) 
+    scheduler = SequentialLR(optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])
 
     # Routine setup
     routine = ClassificationRoutine(
         num_classes=datamodule.num_classes,
-        model=mc_model,
+        model=model,
         loss=nn.CrossEntropyLoss(),
         optim_recipe={"optimizer": optimizer, "lr_scheduler": scheduler},
         is_ensemble=True,
@@ -118,7 +130,6 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
-    parser.add_argument("--num_estimators", type=int, default=100, help="Number of estimators for MC Dropout")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD (not used in adamw)")
     parser.add_argument("--weight_decay", type=float, default=0.0631540840367034, help="Weight decay")
