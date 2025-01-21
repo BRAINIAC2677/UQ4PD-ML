@@ -26,9 +26,11 @@ def main(args):
     """Main training function."""
 
     model = args['model']
+    arch = args['arch']
     seed = args['seed']
     lr = args['lr']
     max_epochs = args['max_epochs']
+    batch_size = args['batch_size']
     drop_prob = args['drop_prob']
     num_estimators = args['num_estimators']
     optimizer = args['optimizer']
@@ -43,6 +45,7 @@ def main(args):
     root = Path("./data/pneumonia-chest-xray")
     datamodule = ChestXDataModule(
         root=root,
+        batch_size=batch_size,
         num_workers=7,
     )
 
@@ -60,7 +63,7 @@ def main(args):
 
     # Model definition
     if model == "resnet":
-        model = resnet(arch=34, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
+        model = resnet(arch=arch, in_channels=datamodule.num_channels, num_classes=datamodule.num_classes, dropout_rate=drop_prob)
     else:
         raise ValueError(f"Unknown model: {model}")
 
@@ -107,9 +110,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a mcdropout model on smile data")
     parser.add_argument("--model", type=str, default="resnet", choices=["resnet"], help="Model type")
+    parser.add_argument("--arch", type=int, default=34, choices=[18, 20, 34, 44, 56, 101, 110, 152, 1202], help="ResNet architecture")
     parser.add_argument("--seed", type=int, default=914, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.005636638313326733, help="Learning rate")
     parser.add_argument("--max_epochs", type=int, default=1, help="Maximum epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--drop_prob", type=float, default=0.23801571998298293, help="Dropout probability")
     parser.add_argument("--num_estimators", type=int, default=100, help="Number of estimators for MC Dropout")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["sgd", "adamw"], help="Optimizer")

@@ -1,0 +1,67 @@
+import optuna
+import argparse
+from mcdropout.train_chestx import main
+
+
+def objective(trial):
+    """Objective function for Optuna."""
+    # Hyperparameter search space
+    model = trial.suggest_categorical("model", ["resnet"])
+    arch = trial.suggest_int("arch", [18, 20, 34, 44, 56, 101, 110, 152, 1202])
+    seed = trial.suggest_int("seed", 0, 1000)
+    lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
+    max_epochs = trial.suggest_int("max_epochs", 6, 30, step=3)
+    batch_size = trial.suggest_int("batch_size", [8, 16, 32, 64])
+    drop_prob = trial.suggest_float("drop_prob", 0.1, 0.5)
+    num_estimators = trial.suggest_int("num_estimators", 100, 1000, step=100)
+    optimizer = trial.suggest_categorical("optimizer", ["sgd", "adamw"])
+    momentum = trial.suggest_float("momentum", 0.5, 0.99) if optimizer == "sgd" else None
+    weight_decay = trial.suggest_float("weight_decay", 0.0, 0.1)
+    beta1 = trial.suggest_float("beta1", 0.8, 0.99) if optimizer == "adamw" else None
+    beta2 = trial.suggest_float("beta2", 0.9, 0.999) if optimizer == "adamw" else None
+
+    args = {
+        "model": model,
+        "arch": arch,
+        "seed": seed,
+        "lr": lr,
+        "max_epochs": max_epochs,
+        "batch_size": batch_size,
+        "drop_prob": drop_prob,
+        "num_estimators": num_estimators,
+        "optimizer": optimizer,
+        "momentum": momentum,
+        "weight_decay": weight_decay,
+        "beta1": beta1,
+        "beta2": beta2,
+    }
+
+    # Call the main training function with the trial's hyperparameters
+    val_results, test_results = main(args)
+
+    # Return the metric to minimize (or maximize)
+    return val_results[0]["val/cls/AUROC"]  # Adjust based on your actual evaluation metric
+
+
+def main_hpt(n_trials: int, log_file: str):
+    """Run Optuna hyperparameter tuning."""
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=n_trials)  # Adjust the number of trials as needed
+
+    with open(log_file, "a") as f:
+        f.write(f"Dataset: chestx | Method: mcdropout\n")
+        f.write(f"Best hyperparameters: {study.best_params}\n")
+        f.write(f"Best value: {study.best_value}\n\n")
+
+    print("Best hyperparameters:", study.best_params)
+    print("Best value:", study.best_value)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Hyperparameter tuning for MC-Dropout on chestx dataset")
+    parser.add_argument("--n_trials", type=int, default=100, help="Number of trials for Optuna") 
+    parser.add_argument("--log_file", type=str, default="hpt_chestx.log", help="Log file to save results")
+
+    args = parser.parse_args()
+    args = vars(args)
+    main_hpt(**args)
